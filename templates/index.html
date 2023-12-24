@@ -71,12 +71,12 @@
             <div class="form-group">
                 <label for="selected_script">Select Bypass Script:</label>
                 <select name="selected_script" id="selectedScript" class="form-control" required onchange="updateTextArea()">
-                    <optgroup label="Script Your Android" data-directory="Script Directory 1">
+                    <optgroup label="Your Android Script" data-directory="Script Directory 1">
                         {% for script in bypass_scripts_1 %}
                             <option value="{{ script }}">{{ script }}</option>
                         {% endfor %}
                     </optgroup>
-                    <optgroup label="Script Your iOS" data-directory="Script Directory 2">
+                    <optgroup label="Your iOS Script" data-directory="Script Directory 2">
                         {% for script in bypass_scripts_2 %}
                             <option value="{{ script }}">{{ script }}</option>
                         {% endfor %}
