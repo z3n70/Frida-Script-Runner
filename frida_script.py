@@ -5,7 +5,7 @@ import os
 app = Flask(__name__)
 process = None
 
-SCRIPTS_DIRECTORY = "/Users/zenalarifin/Belajar/python/Frida-Script-Runner/scripts"
+SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
 def get_package_identifiers():
     try:
