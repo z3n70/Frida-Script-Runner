@@ -19,11 +19,16 @@ def get_package_identifiers():
 
 def get_bypass_scripts():
     try:
-        bypass_scripts = [f for f in os.listdir(SCRIPTS_DIRECTORY) if f.endswith(".js")]
-        return bypass_scripts
+        scripts_directory_1 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 1")
+        bypass_scripts_1 = [f for f in os.listdir(scripts_directory_1) if f.endswith(".js")]
+
+        scripts_directory_2 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 2")
+        bypass_scripts_2 = [f for f in os.listdir(scripts_directory_2) if f.endswith(".js")]
+
+        return bypass_scripts_1, bypass_scripts_2
     except Exception as e:
         print(f"Error getting bypass scripts: {e}")
-        return []
+        return [], []
 
 def get_script_content(script_path):
     try:
@@ -61,8 +66,8 @@ def generate_output():
 def index():
     try:
         identifiers = get_package_identifiers()
-        bypass_scripts = get_bypass_scripts()
-        return render_template('index.html', identifiers=identifiers, bypass_scripts=bypass_scripts)
+        bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
+        return render_template('index.html', identifiers=identifiers, bypass_scripts_1=bypass_scripts_1, bypass_scripts_2=bypass_scripts_2)
     except Exception as e:
         return render_template('index.html', error=f"Error: {e}")
 
@@ -83,7 +88,6 @@ def run_frida():
 
         script_content = get_script_content(script_path)
 
-        # Menggunakan jsonify untuk mengirim hasil eksekusi sebagai respons JSON
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
     except Exception as e:
         return jsonify({"error": f"Error: {e}"}), 500
@@ -92,7 +96,6 @@ def run_frida():
 def stop_frida():
     global process
 
-    # Stop the Frida process
     if process and process.poll() is None:
         process.terminate()
         return 'Frida process stopped', 200

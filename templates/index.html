@@ -71,9 +71,16 @@
             <div class="form-group">
                 <label for="selected_script">Select Bypass Script:</label>
                 <select name="selected_script" id="selectedScript" class="form-control" required onchange="updateTextArea()">
-                    {% for script in bypass_scripts %}
-                        <option value="{{ script }}">{{ script }}</option>
-                    {% endfor %}
+                    <optgroup label="Script Directory 1" data-directory="Script Directory 1">
+                        {% for script in bypass_scripts_1 %}
+                            <option value="{{ script }}">{{ script }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Script Directory 2" data-directory="Script Directory 2">
+                        {% for script in bypass_scripts_2 %}
+                            <option value="{{ script }}">{{ script }}</option>
+                        {% endfor %}
+                    </optgroup>
                 </select>
             </div>
 
@@ -157,9 +164,9 @@
         };
 
        
-        eventSource.onerror = function(event) {
-            appendContent('Error connecting to server');
-        };
+        // eventSource.onerror = function(event) {
+        //     appendContent('Error connecting to server');
+        // };
     }
 
     startStreaming();
