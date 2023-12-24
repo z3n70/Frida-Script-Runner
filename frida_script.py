@@ -59,8 +59,9 @@ def generate_output():
 
         if line_stderr:
             yield f'data: Stderr: {line_stderr.decode("utf-8")}\n\n'
-
-    process.terminate()
+    
+    if process: #fix problem for notype object
+        process.terminate()
 
 @app.route('/')
 def index():
