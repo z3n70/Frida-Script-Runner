@@ -10,6 +10,12 @@ Frida Script Runner is a versatile web-based tool designed for running Frida scr
 - **Real-time Output:** View real-time output from the Frida process.
 - **Script Organization:** Scripts are organized into different directories for easy selection.
 
+![Alt text](https://i.ibb.co/yRLD4mg/Screen-Shot-2023-12-25-at-00-14-22.png#")
+![Alt text](https://i.ibb.co/JC2mfPB/Screen-Shot-2023-12-25-at-02-20-21.png#")
+![Alt text](https://i.ibb.co/VWCnbGc/Screen-Shot-2023-12-25-at-02-20-33.png#")
+![Alt text](https://i.ibb.co/Mfcfq6w/Screen-Shot-2023-12-25-at-02-20-52.png#")
+![Alt text](https://i.ibb.co/Db1my9z/Screen-Shot-2023-12-25-at-02-31-13.png#")
+
 ## Prerequisites
 
 - Python 3.x
