@@ -18,7 +18,7 @@ Frida Script Runner is a versatile web-based tool designed for running Frida scr
 
 ## Prerequisites
 
-- Python 3.x
+- Python 3.11.x (required)
 - Flask
 - Frida
 
