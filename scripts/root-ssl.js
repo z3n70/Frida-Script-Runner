@@ -1,10 +1,3 @@
-// $ frida -l antiroot.js -U -f com.example.app --no-pause
-// CHANGELOG by Pichaya Morimoto (p.morimoto@sth.sh): 
-//  - I added extra whitelisted items to deal with the latest versions 
-// 						of RootBeer/Cordova iRoot as of August 6, 2019
-//  - The original one just fucked up (kill itself) if Magisk is installed lol
-// Credit & Originally written by: https://codeshare.frida.re/@dzonerzy/fridantiroot/
-// If this isn't working in the future, check console logs, rootbeer src, or libtool-checker.so
 Java.perform(function() {
 
     var RootPackages = ["com.noshufou.android.su", "com.noshufou.android.su.elite", "eu.chainfire.supersu",
@@ -276,28 +269,12 @@ Java.perform(function() {
         }
     });
 
-    /*
-
-    TO IMPLEMENT:
-
-    Exec Family
-
-    int execl(const char *path, const char *arg0, ..., const char *argn, (char *)0);
-    int execle(const char *path, const char *arg0, ..., const char *argn, (char *)0, char *const envp[]);
-    int execlp(const char *file, const char *arg0, ..., const char *argn, (char *)0);
-    int execlpe(const char *file, const char *arg0, ..., const char *argn, (char *)0, char *const envp[]);
-    int execv(const char *path, char *const argv[]);
-    int execve(const char *path, char *const argv[], char *const envp[]);
-    int execvp(const char *file, char *const argv[]);
-    int execvpe(const char *file, char *const argv[], char *const envp[]);
-
-    */
-
+ 
 
     BufferedReader.readLine.overload().implementation = function() {
         var text = this.readLine.call(this);
         if (text === null) {
-            // just pass , i know it's ugly as hell but test != null won't work :(
+     
         } else {
             var shouldFakeRead = (text.indexOf("ro.build.tags=test-keys") > -1);
             if (shouldFakeRead) {
@@ -377,6 +354,98 @@ Java.perform(function() {
             send("Bypass isInsideSecureHardware");
             return true;
         }
+    }
+
+    //Advance SSL Pinning Bypass
+    console.log('')
+    console.log('===')
+    console.log('* Injecting hooks into common certificate pinning methods *')
+    console.log('===')
+
+    var X509TrustManager = Java.use('javax.net.ssl.X509TrustManager');
+    var SSLContext = Java.use('javax.net.ssl.SSLContext');
+
+    // build fake trust manager
+    var TrustManager = Java.registerClass({
+        name: 'com.sensepost.test.TrustManager',
+        implements: [X509TrustManager],
+        methods: {
+            checkClientTrusted: function (chain, authType) {
+            },
+            checkServerTrusted: function (chain, authType) {
+            },
+            getAcceptedIssuers: function () {
+                return [];
+            }
+        }
+    });
+
+    // pass our own custom trust manager through when requested
+    var TrustManagers = [TrustManager.$new()];
+    var SSLContext_init = SSLContext.init.overload(
+        '[Ljavax.net.ssl.KeyManager;', '[Ljavax.net.ssl.TrustManager;', 'java.security.SecureRandom'
+    );
+    SSLContext_init.implementation = function (keyManager, trustManager, secureRandom) {
+        console.log('! Intercepted trustmanager request');
+        SSLContext_init.call(this, keyManager, TrustManagers, secureRandom);
+    };
+
+    console.log('* Setup custom trust manager');
+
+    // okhttp3
+    try {
+        var CertificatePinner = Java.use('okhttp3.CertificatePinner');
+        CertificatePinner.check.overload('java.lang.String', 'java.util.List').implementation = function (str) {
+            console.log('! Intercepted okhttp3: ' + str);
+            return;
+        };
+
+        console.log('* Setup okhttp3 pinning')
+    } catch(err) {
+        console.log('* Unable to hook into okhttp3 pinner')
+    }
+
+
+    try {
+        var Activity = Java.use("com.datatheorem.android.trustkit.pinning.OkHostnameVerifier");
+        Activity.verify.overload('java.lang.String', 'javax.net.ssl.SSLSession').implementation = function (str) {
+            console.log('! Intercepted trustkit{1}: ' + str);
+            return true;
+        };
+
+        Activity.verify.overload('java.lang.String', 'java.security.cert.X509Certificate').implementation = function (str) {
+            console.log('! Intercepted trustkit{2}: ' + str);
+            return true;
+        };
+
+        console.log('* Setup trustkit pinning')
+    } catch(err) {
+        console.log('* Unable to hook into trustkit pinner')
+    }
+
+
+    try {
+        var TrustManagerImpl = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+        TrustManagerImpl.verifyChain.implementation = function (untrustedChain, trustAnchorChain, host, clientAuth, ocspData, tlsSctData) {
+            console.log('! Intercepted TrustManagerImp: ' + host);
+            return untrustedChain;
+        }
+
+        console.log('* Setup TrustManagerImpl pinning')
+    } catch (err) {
+        console.log('* Unable to hook into TrustManagerImpl')
+    }
+
+
+    try {
+        var PinningTrustManager = Java.use('appcelerator.https.PinningTrustManager');
+        PinningTrustManager.checkServerTrusted.implementation = function () {
+            console.log('! Intercepted Appcelerator');
+        }
+
+        console.log('* Setup Appcelerator pinning')
+    } catch (err) {
+        console.log('* Unable to hook into Appcelerator pinning')
     }
 
 });

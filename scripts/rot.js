@@ -1,22 +1,14 @@
-// $ frida -l antiroot.js -U -f com.example.app --no-pause
-// CHANGELOG by Pichaya Morimoto (p.morimoto@sth.sh): 
-//  - I added extra whitelisted items to deal with the latest versions 
-// 						of RootBeer/Cordova iRoot as of August 6, 2019
-//  - The original one just fucked up (kill itself) if Magisk is installed lol
-// Credit & Originally written by: https://codeshare.frida.re/@dzonerzy/fridantiroot/
-// If this isn't working in the future, check console logs, rootbeer src, or libtool-checker.so
 Java.perform(function() {
-
     var RootPackages = ["com.noshufou.android.su", "com.noshufou.android.su.elite", "eu.chainfire.supersu",
         "com.koushikdutta.superuser", "com.thirdparty.superuser", "com.yellowes.su", "com.koushikdutta.rommanager",
         "com.koushikdutta.rommanager.license", "com.dimonvideo.luckypatcher", "com.chelpus.lackypatch",
         "com.ramdroid.appquarantine", "com.ramdroid.appquarantinepro", "com.devadvance.rootcloak", "com.devadvance.rootcloakplus",
         "de.robv.android.xposed.installer", "com.saurik.substrate", "com.zachspong.temprootremovejb", "com.amphoras.hidemyroot",
         "com.amphoras.hidemyrootadfree", "com.formyhm.hiderootPremium", "com.formyhm.hideroot", "me.phh.superuser",
-        "eu.chainfire.supersu.pro", "com.kingouser.com", "com.android.vending.billing.InAppBillingService.COIN","com.topjohnwu.magisk"
+        "eu.chainfire.supersu.pro", "com.kingouser.com"
     ];
 
-    var RootBinaries = ["su", "busybox", "supersu", "Superuser.apk", "KingoUser.apk", "SuperSu.apk","magisk"];
+    var RootBinaries = ["su", "busybox", "supersu", "Superuser.apk", "KingoUser.apk", "SuperSu.apk"];
 
     var RootProperties = {
         "ro.build.selinux": "1",
@@ -79,7 +71,7 @@ Java.perform(function() {
         send("KeyInfo hook not loaded");
     }
 
-    PackageManager.getPackageInfo.overload('java.lang.String', 'int').implementation = function(pname, flags) {
+    PackageManager.getPackageInfo.implementation = function(pname, flags) {
         var shouldFakePackage = (RootPackages.indexOf(pname) > -1);
         if (shouldFakePackage) {
             send("Bypass root check for package: " + pname);
@@ -115,11 +107,6 @@ Java.perform(function() {
         if (cmd == "su") {
             var fakeCmd = "justafakecommandthatcannotexistsusingthisshouldthowanexceptionwheneversuiscalled";
             send("Bypass " + cmd + " command");
-            return exec1.call(this, fakeCmd);
-        }
-        if (cmd == "which") {
-            var fakeCmd = "justafakecommandthatcannotexistsusingthisshouldthowanexceptionwheneversuiscalled";
-            send("Bypass which command");
             return exec1.call(this, fakeCmd);
         }
         return exec5.call(this, cmd, env, dir);
@@ -228,29 +215,13 @@ Java.perform(function() {
 
     Interceptor.attach(Module.findExportByName("libc.so", "fopen"), {
         onEnter: function(args) {
-            var path1 = Memory.readCString(args[0]);
-            var path = path1.split("/");
+            var path = Memory.readCString(args[0]);
+            path = path.split("/");
             var executable = path[path.length - 1];
             var shouldFakeReturn = (RootBinaries.indexOf(executable) > -1)
             if (shouldFakeReturn) {
-                Memory.writeUtf8String(args[0], "/ggezxxx");
-                send("Bypass native fopen >> "+path1);
-            }
-        },
-        onLeave: function(retval) {
-
-        }
-    });
-
-    Interceptor.attach(Module.findExportByName("libc.so", "fopen"), {
-        onEnter: function(args) {
-            var path1 = Memory.readCString(args[0]);
-            var path = path1.split("/");
-            var executable = path[path.length - 1];
-            var shouldFakeReturn = (RootBinaries.indexOf(executable) > -1)
-            if (shouldFakeReturn) {
-                Memory.writeUtf8String(args[0], "/ggezxxx");
-                send("Bypass native fopen >> "+path1);
+                Memory.writeUtf8String(args[0], "/notexists");
+                send("Bypass native fopen");
             }
         },
         onLeave: function(retval) {
@@ -294,7 +265,7 @@ Java.perform(function() {
     */
 
 
-    BufferedReader.readLine.overload().implementation = function() {
+    BufferedReader.readLine.implementation = function() {
         var text = this.readLine.call(this);
         if (text === null) {
             // just pass , i know it's ugly as hell but test != null won't work :(
@@ -378,5 +349,169 @@ Java.perform(function() {
             return true;
         }
     }
+    
+    
+    
+/*
+setImmediate(function(){
+   Java.perform(function(){
+      var exit_bypass = Java.use("android.content.DialogInterface.OnClickListener");
+      exit_bypass.onClick.implementation = function(arg, arg2){
+         console.log("[*] Exit Bypass");
+      }
+   })
+})
+*/
+setImmediate(function(){
+/*
+      var naver = Java.use("java.lang.Object");
+      naver.onCreate.implementation = function(agr) {
+         console.log("1111")
+      }
+*/
+
+/*      var getVDR;
+
+      Java.choose("com.lgeha.nuts.security.module.SecurityModule",{
+      onMatch : function(instance){
+         getVDR = instance;
+      },
+      onComplete : function(){
+         console.log("[*] mSecurityModule apply Success");
+      }
+      });
+      
+      getVDR.getVerifyDoneResult().implementation = function(){
+         return true;
+      };
+*/      
+   })
+})
+
+ 
+function SSLContext()
+{
+    var X509TrustManager = Java.use('javax.net.ssl.X509TrustManager');
+    var SSLContext = Java.use('javax.net.ssl.SSLContext');
+
+    // build fake trust manager
+    var TrustManager = Java.registerClass({
+        name: 'com.sensepost.test.TrustManager',
+        implements: [X509TrustManager],
+        methods: {
+            checkClientTrusted: function (chain, authType) {
+            },
+            checkServerTrusted: function (chain, authType) {
+            },
+            getAcceptedIssuers: function () {
+                return [];
+            }
+        }
+    });
+
+    // pass our own custom trust manager through when requested
+    var TrustManagers = [TrustManager.$new()];
+    var SSLContext_init = SSLContext.init.overload(
+        '[Ljavax.net.ssl.KeyManager;', '[Ljavax.net.ssl.TrustManager;', 'java.security.SecureRandom'
+    );
+    SSLContext_init.implementation = function (keyManager, trustManager, secureRandom) {
+        console.log('! Intercepted trustmanager request');
+        SSLContext_init.call(this, keyManager, TrustManagers, secureRandom);
+    };
+
+    console.log('* Setup custom trust manager');
+}
+    
+function okhttp3()
+{
+    try {
+        var CertificatePinner = Java.use('okhttp3.CertificatePinner');
+        CertificatePinner.check.overload('java.lang.String', 'java.util.List').implementation = function (str) {
+            console.log('! Intercepted okhttp3: ' + str);
+            return;
+        };
+
+        console.log('* Setup okhttp3 pinning')
+    } catch(err) {
+        console.log('* Unable to hook into okhttp3 pinner')
+    }
+
+}
+
+function trustkit()
+{
+    try {
+        var Activity = Java.use("com.datatheorem.android.trustkit.pinning.OkHostnameVerifier");
+        Activity.verify.overload('java.lang.String', 'javax.net.ssl.SSLSession').implementation = function (str) {
+            console.log('! Intercepted trustkit{1}: ' + str);
+            return true;
+        };
+
+        Activity.verify.overload('java.lang.String', 'java.security.cert.X509Certificate').implementation = function (str) {
+            console.log('! Intercepted trustkit{2}: ' + str);
+            return true;
+        };
+
+        console.log('* Setup trustkit pinning')
+    } catch(err) {
+        console.log('* Unable to hook into trustkit pinner')
+    }
+
+}
+
+function TrustManagerImpl()
+{
+    try {
+        var TrustManagerImpl = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+        TrustManagerImpl.verifyChain.implementation = function (untrustedChain, trustAnchorChain, host, clientAuth, ocspData, tlsSctData) {
+            console.log('! Intercepted TrustManagerImp: ' + host);
+            return untrustedChain;
+        }
+      
+      var ArrayList = Java.use("java.util.ArrayList");
+      TrustManagerImpl.checkTrustedRecursive.implementation = function(certs, host, clientAuth, untrustedChain,
+        trustAnchorChain, used) {
+        console.log("[+] Bypassing TrustManagerImpl->checkTrustedRecursive()");
+        return ArrayList.$new();
+    };
+
+        console.log('* Setup TrustManagerImpl pinning')
+    } catch (err) {
+        console.log('* Unable to hook into TrustManagerImpl')
+    }
+
+}
+
+function Appcelerator()
+{
+    try {
+        var PinningTrustManager = Java.use('appcelerator.https.PinningTrustManager');
+        PinningTrustManager.checkServerTrusted.implementation = function () {
+            console.log('! Intercepted Appcelerator');
+        }
+
+        console.log('* Setup Appcelerator pinning')
+    } catch (err) {
+        console.log('* Unable to hook into Appcelerator pinning')
+    }
+}
+
+Java.perform(function () {
+    console.log("");
+    console.log("[*] Universal SSL Bypass");
+    console.log("[1] javax.net.ssl.SSLContext.init()");
+    console.log("[2] okhttp3.CertificatePinner.check()");
+    console.log("[3] com.datatheorem.android.trustkit.pinning.OkHostnameVerifier.verify()");
+    console.log("[4] com.android.org.conscrypt.TrustManagerImpl.verifyChain()");
+    console.log("[5] appcelerator.https.PinningTrustManager.checkServerTrusted()");
+    console.log("");
+
+    //TODO: TrustManagerImpl.checkTrustedRecursive()
+
+    SSLContext();
+    okhttp3();
+    trustkit();
+    TrustManagerImpl();
+    Appcelerator();
 
 });

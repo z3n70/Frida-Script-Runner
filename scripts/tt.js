@@ -1,22 +1,21 @@
-// $ frida -l antiroot.js -U -f com.example.app --no-pause
-// CHANGELOG by Pichaya Morimoto (p.morimoto@sth.sh): 
-//  - I added extra whitelisted items to deal with the latest versions 
-// 						of RootBeer/Cordova iRoot as of August 6, 2019
-//  - The original one just fucked up (kill itself) if Magisk is installed lol
-// Credit & Originally written by: https://codeshare.frida.re/@dzonerzy/fridantiroot/
-// If this isn't working in the future, check console logs, rootbeer src, or libtool-checker.so
-Java.perform(function() {
+/*
+Original author: Daniele Linguaglossa
+28/07/2021 -    Edited by Simone Quatrini
+                Code amended to correctly run on the latest frida version
+        		Added controls to exclude Magisk Manager
+*/
 
+Java.perform(function() {
     var RootPackages = ["com.noshufou.android.su", "com.noshufou.android.su.elite", "eu.chainfire.supersu",
         "com.koushikdutta.superuser", "com.thirdparty.superuser", "com.yellowes.su", "com.koushikdutta.rommanager",
         "com.koushikdutta.rommanager.license", "com.dimonvideo.luckypatcher", "com.chelpus.lackypatch",
         "com.ramdroid.appquarantine", "com.ramdroid.appquarantinepro", "com.devadvance.rootcloak", "com.devadvance.rootcloakplus",
         "de.robv.android.xposed.installer", "com.saurik.substrate", "com.zachspong.temprootremovejb", "com.amphoras.hidemyroot",
         "com.amphoras.hidemyrootadfree", "com.formyhm.hiderootPremium", "com.formyhm.hideroot", "me.phh.superuser",
-        "eu.chainfire.supersu.pro", "com.kingouser.com", "com.android.vending.billing.InAppBillingService.COIN","com.topjohnwu.magisk"
+        "eu.chainfire.supersu.pro", "com.kingouser.com", "com.topjohnwu.magisk"
     ];
 
-    var RootBinaries = ["su", "busybox", "supersu", "Superuser.apk", "KingoUser.apk", "SuperSu.apk","magisk"];
+    var RootBinaries = ["su", "busybox", "supersu", "Superuser.apk", "KingoUser.apk", "SuperSu.apk", "magisk"];
 
     var RootProperties = {
         "ro.build.selinux": "1",
@@ -85,7 +84,7 @@ Java.perform(function() {
             send("Bypass root check for package: " + pname);
             pname = "set.package.name.to.a.fake.one.so.we.can.bypass.it";
         }
-        return this.getPackageInfo.call(this, pname, flags);
+        return this.getPackageInfo.overload('java.lang.String', 'int').call(this, pname, flags);
     };
 
     NativeFile.exists.implementation = function() {
@@ -115,11 +114,6 @@ Java.perform(function() {
         if (cmd == "su") {
             var fakeCmd = "justafakecommandthatcannotexistsusingthisshouldthowanexceptionwheneversuiscalled";
             send("Bypass " + cmd + " command");
-            return exec1.call(this, fakeCmd);
-        }
-        if (cmd == "which") {
-            var fakeCmd = "justafakecommandthatcannotexistsusingthisshouldthowanexceptionwheneversuiscalled";
-            send("Bypass which command");
             return exec1.call(this, fakeCmd);
         }
         return exec5.call(this, cmd, env, dir);
@@ -228,29 +222,13 @@ Java.perform(function() {
 
     Interceptor.attach(Module.findExportByName("libc.so", "fopen"), {
         onEnter: function(args) {
-            var path1 = Memory.readCString(args[0]);
-            var path = path1.split("/");
+            var path = Memory.readCString(args[0]);
+            path = path.split("/");
             var executable = path[path.length - 1];
             var shouldFakeReturn = (RootBinaries.indexOf(executable) > -1)
             if (shouldFakeReturn) {
-                Memory.writeUtf8String(args[0], "/ggezxxx");
-                send("Bypass native fopen >> "+path1);
-            }
-        },
-        onLeave: function(retval) {
-
-        }
-    });
-
-    Interceptor.attach(Module.findExportByName("libc.so", "fopen"), {
-        onEnter: function(args) {
-            var path1 = Memory.readCString(args[0]);
-            var path = path1.split("/");
-            var executable = path[path.length - 1];
-            var shouldFakeReturn = (RootBinaries.indexOf(executable) > -1)
-            if (shouldFakeReturn) {
-                Memory.writeUtf8String(args[0], "/ggezxxx");
-                send("Bypass native fopen >> "+path1);
+                Memory.writeUtf8String(args[0], "/notexists");
+                send("Bypass native fopen");
             }
         },
         onLeave: function(retval) {
@@ -294,8 +272,8 @@ Java.perform(function() {
     */
 
 
-    BufferedReader.readLine.overload().implementation = function() {
-        var text = this.readLine.call(this);
+    BufferedReader.readLine.overload('boolean').implementation = function() {
+        var text = this.readLine.overload('boolean').call(this);
         if (text === null) {
             // just pass , i know it's ugly as hell but test != null won't work :(
         } else {
