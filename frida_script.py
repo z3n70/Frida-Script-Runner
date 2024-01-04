@@ -13,6 +13,9 @@ class OsNotSupportedError(Exception):
 
 # fuction to check adb status and devices connectivity
 def there_is_adb_and_devices():
+    adb_is_active = False
+    available_devices = []
+    message = ""
     def run_adb_command(command):
         if os.name not in ["darwin","posix"]:
             result = subprocess.run(["adb"]+command, capture_output=True, text=True, check=True)
@@ -21,21 +24,22 @@ def there_is_adb_and_devices():
             # pass
         return result.stdout.strip()
 
-    adb_is_active = False
-    available_devices = []
-    message = ""
 
-    # check for connected devices.
-    connected_devices = run_adb_command(["devices"]).split('\n')[1:]
-    device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
-
-    if device_ids:
-        for device_id in device_ids:
-            model = run_adb_command(["-s", device_id, "shell", "getprop", "ro.product.model"])
-            serial_number = run_adb_command(["-s", device_id, "shell", "getprop", "ro.serialno"])
-            available_devices.append({"model":model,"serial_number":serial_number})
+    # check for connected devices on machine other than osx.
+    if os.name not in ["darwin","posix"]:
+        connected_devices = run_adb_command(["devices"]).split('\n')[1:]
+        device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
+        
+        if device_ids:
+            for device_id in device_ids:
+                model = run_adb_command(["-s", device_id, "shell", "getprop", "ro.product.model"])
+                serial_number = run_adb_command(["-s", device_id, "shell", "getprop", "ro.serialno"])
+                available_devices.append({"model":model,"serial_number":serial_number})
+            adb_is_active = True
+            message = "device is avaliabe"
+    else:
         adb_is_active = True
-        message = "device is avaliabe"
+        message = "osx device always return True even device is not exist"
 
     return {"is_true":adb_is_active,"available_devices":available_devices,"message":message}
 
