@@ -18,6 +18,7 @@ def there_is_adb_and_devices():
             result = subprocess.run(["adb"]+command, capture_output=True, text=True, check=True)
         else:
             result = ""
+            # pass
         return result.stdout.strip()
 
     adb_is_active = False
