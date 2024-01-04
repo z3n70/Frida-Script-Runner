@@ -7,38 +7,8 @@ process = None
 
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
-
-class OsNotSupportedError(Exception):
-    pass
-
-# fuction to check adb status and devices connectivity
-def there_is_adb_and_devices():
-    def run_adb_command(command):
-        result = subprocess.run(["adb"]+command, capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-
-    adb_is_active = False
-    available_devices = []
-    message = ""
-
-    # check for connected devices.
-    connected_devices = run_adb_command(["devices"]).split('\n')[1:]
-    device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
-
-    if device_ids:
-        for device_id in device_ids:
-            model = run_adb_command(["-s", device_id, "shell", "getprop", "ro.product.model"])
-            serial_number = run_adb_command(["-s", device_id, "shell", "getprop", "ro.serialno"])
-            available_devices.append({"model":model,"serial_number":serial_number})
-        adb_is_active = True
-        message = "device is avaliabe"
-
-    return {"is_true":adb_is_active,"available_devices":available_devices,"message":message}
-
-
 def get_package_identifiers():
     try:
-        print("debug")
         result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
         lines = result.stdout.strip().split('\n')[1:]
         identifiers = [line.split()[-1] for line in lines]
@@ -95,16 +65,12 @@ def generate_output():
 
 @app.route('/')
 def index():
-    adb_check = there_is_adb_and_devices()
-    if adb_check["is_true"]:
-        try:
-            identifiers = get_package_identifiers()
-            bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
-            return render_template('index.html', identifiers=identifiers, bypass_scripts_1=bypass_scripts_1, bypass_scripts_2=bypass_scripts_2,devices=adb_check)
-        except Exception as e:
-            return render_template('index.html', error=f"Error: {e}")
-    else:
-        return "<body style='background-color:black;'><h1 style='color:red;'>There is no adb or device connected. Make sure your ADB is installed correctly then connect your device, run your frida server and reload this page</h1></body>"
+    try:
+        identifiers = get_package_identifiers()
+        bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
+        return render_template('index.html', identifiers=identifiers, bypass_scripts_1=bypass_scripts_1, bypass_scripts_2=bypass_scripts_2)
+    except Exception as e:
+        return render_template('index.html', error=f"Error: {e}")
 
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
@@ -119,20 +85,7 @@ def run_frida():
 
         script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
         command = f'frida -l {script_path} -U -f {package}'
-        
-        # determining wich OS is used by user
-
-        # if *nix family
-        if os.name in ["darwin","posix"]:
-            process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        # when user use windows machine
-        elif os.name == "nt":
-            process = subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        # except machine listed above
-        else:
-            raise OsNotSupportedError("This script only work on Windows, Linux and Darwin machines")
+        process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         script_content = get_script_content(script_path)
 
