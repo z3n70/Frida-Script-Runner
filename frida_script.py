@@ -97,12 +97,16 @@ def generate_output():
 
 @app.route('/')
 def index():
-    try:
-        identifiers = get_package_identifiers()
-        bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
-        return render_template('index.html', identifiers=identifiers, bypass_scripts_1=bypass_scripts_1, bypass_scripts_2=bypass_scripts_2)
-    except Exception as e:
-        return render_template('index.html', error=f"Error: {e}")
+    adb_check = there_is_adb_and_devices()
+    if adb_check["is_true"]:
+        try:
+            identifiers = get_package_identifiers()
+            bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
+            return render_template('index.html', identifiers=identifiers, bypass_scripts_1=bypass_scripts_1, bypass_scripts_2=bypass_scripts_2,devices=adb_check)
+        except Exception as e:
+            return render_template('index.html', error=f"Error: {e}")
+    else:
+        return "<body style='background-color:black;'><h1 style='color:red;'>There is no adb or device connected. Make sure your ADB is installed correctly then connect your device, run your frida server and reload this page</h1></body>"
 
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
