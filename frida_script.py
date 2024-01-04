@@ -14,10 +14,10 @@ class OsNotSupportedError(Exception):
 # fuction to check adb status and devices connectivity
 def there_is_adb_and_devices():
     def run_adb_command(command):
-        if os.name not in if os.name in ["darwin","posix"]:
+        if os.name not in ["darwin","posix"]:
             result = subprocess.run(["adb"]+command, capture_output=True, text=True, check=True)
         else:
-            result = ""
+            result = subprocess.run(["frida-ps -Uai"]+command, capture_output=True, text=True, check=True)
             # pass
         return result.stdout.strip()
 
