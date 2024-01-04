@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, Response, jsonify
 import subprocess
 import os
+import json
+
 
 app = Flask(__name__)
 process = None
@@ -54,17 +56,28 @@ def get_package_identifiers():
         return []
 
 def get_bypass_scripts():
-    try:
-        scripts_directory_1 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 1")
-        bypass_scripts_1 = [f for f in os.listdir(scripts_directory_1) if f.endswith(".js")]
+    # try:
+    #     scripts_directory_1 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 1")
+    #     bypass_scripts_1 = [f for f in os.listdir(scripts_directory_1) if f.endswith(".js")]
 
-        scripts_directory_2 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 2")
-        bypass_scripts_2 = [f for f in os.listdir(scripts_directory_2) if f.endswith(".js")]
+    #     scripts_directory_2 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 2")
+    #     bypass_scripts_2 = [f for f in os.listdir(scripts_directory_2) if f.endswith(".js")]
 
-        return bypass_scripts_1, bypass_scripts_2
-    except Exception as e:
-        print(f"Error getting bypass scripts: {e}")
-        return [], []
+    #     return bypass_scripts_1, bypass_scripts_2
+    # except Exception as e:
+    #     print(f"Error getting bypass scripts: {e}")
+    #     return [], []
+    list_script = json.load(open("script.json","r"))["scripts"]
+    IOS = []
+    ANDROID = []
+    for item in list_script:
+        k = [i for i in item.keys()][0]
+        if item[k]["category"] == "IOS":
+            IOS.append(item[k])
+        else:
+            ANDROID.append(item[k])
+    return ANDROID, IOS
+
 
 def get_script_content(script_path):
     try:
@@ -106,7 +119,7 @@ def index():
         try:
             identifiers = get_package_identifiers()
             bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
-            return render_template('index.html', identifiers=identifiers, bypass_scripts_1=bypass_scripts_1, bypass_scripts_2=bypass_scripts_2,devices=adb_check)
+            return render_template('index.html', identifiers=identifiers, bypass_scripts_android=bypass_scripts_1, bypass_scripts_ios=bypass_scripts_2,devices=adb_check)
         except Exception as e:
             return render_template('index.html', error=f"Error: {e}")
     else:
@@ -151,3 +164,4 @@ def stream():
 
 if __name__ == '__main__':
     app.run(debug=True)
+    # print(get_bypass_scripts())

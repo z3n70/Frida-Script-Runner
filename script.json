@@ -1,0 +1,19 @@
+{
+"scripts": [{
+	"tt.js" : {"category":"IOS",
+				"group" : "SSL",
+				"file_name":"tt.js",
+			 "description":"membypass ssl pinning"}
+		},
+	{"root.js" : {"category":"ANDROID",
+				"group" : "ROOT",
+				"file_name":"root.js",
+			 "description":"membypass root detection"}
+		},
+	{"chat.js" : {"category":"IOS",
+				"group" : "ROOT",
+				"file_name":"chat.js",
+			 "description":"membypass emulator detection"}
+		}
+	]
+}
