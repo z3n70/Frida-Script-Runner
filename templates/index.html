@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,32 +8,35 @@
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <style>
         body {
-            background-color: #fff;
+            background-color: #f8f9fa;
             color: #333;
-            padding: 50px;
+            padding: 20px;
         }
 
         .container {
-            background-color: #e4eaef;
-            padding: 20px;
+            background-color: #ffffff;
+            padding: 30px;
             border-radius: 10px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
         }
 
         .jumbotron {
             background: #204ecf;
             color: #fff;
             padding: 20px;
-            border-radius: 0;
+            border-radius: 10px;
             margin-bottom: 30px;
         }
 
         .form-control {
-            border-radius: 0;
+            border-radius: 5px;
+            margin-top: 10px;
         }
 
         .btn {
-            border-radius: 20;
+            border-radius: 5px;
+            margin-top: 10px;
         }
 
         #outputContainer {
@@ -49,10 +53,13 @@
         }
     </style>
 </head>
-<body>
-    <h1 class="display-3 text-center">Frida Script Runner</h1>
 
+<body>
     <div class="container">
+        <div class="jumbotron text-center">
+            <h1 class="display-4">Frida Script Runner</h1>
+        </div>
+
         <form action="/run-frida" method="post">
             <div class="form-group">
                 <label for="package">Select Package:</label>
