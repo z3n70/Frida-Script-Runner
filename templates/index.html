@@ -73,12 +73,12 @@
                 <select name="selected_script" id="selectedScript" class="form-control" required onchange="updateTextArea()">
                     <optgroup label="Your Android Script" data-directory="Script Directory 1">
                         {% for script in bypass_scripts_android %}
-                            <option value="{{ script['file_name'] }}">{{ script['file_name'] }} - {{ script['description'] }}</option>
+                            <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
                         {% endfor %}
                     </optgroup>
                     <optgroup label="Your iOS Script" data-directory="Script Directory 2">
                         {% for script in bypass_scripts_ios %}
-                            <option value="{{ script['file_name'] }}">{{ script['file_name'] }} - {{ script['description'] }}</option>
+                            <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }} </option>
                         {% endfor %}
                     </optgroup>
                 </select>
