@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, Response, jsonify
 import subprocess
 import os
 import json
+import base64
+import hashlib
 
 
 app = Flask(__name__)
@@ -124,23 +126,31 @@ def index():
             return render_template('index.html', error=f"Error: {e}")
     else:
         return "<body style='background-color:black;'><h1 style='color:red;'>There is no adb or device connected. Make sure your ADB is installed correctly then connect your device, run your frida server and reload this page</h1></body>"
-
+    
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
     global process
 
     try:
         package = request.form['package']
+        use_custom_script = int(request.form['use_custom_script'])
         selected_script = request.form['selected_script']
+        script_content = request.form['script_content']
+
+        if use_custom_script:
+            script_name = hashlib.sha256(script_content.encode()).hexdigest() + ".js"
+            script_path = os.path.join("tmp", script_name)
+            with open(script_path, 'w') as file:
+                file.write(script_content)
+
+        else:
+            script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
 
         if process and process.poll() is None:
             process.terminate()
 
-        script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
         command = f'frida -l {script_path} -U -f {package}'
         process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        script_content = get_script_content(script_path)
 
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
     except Exception as e:
