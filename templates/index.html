@@ -170,32 +170,6 @@
             .catch(error => console.error(error));
     }
 
-    function startStreaming() {
-        const outputContainer = document.getElementById("outputContainer");
-
-      
-        const appendContent = (content) => {
-            outputContainer.innerHTML += '<pre>' + content + '</pre>';
-            outputContainer.scrollTop = outputContainer.scrollHeight; 
-        };
-
-        const eventSource = new EventSource('/stream');
-        eventSource.onmessage = function(event) {
-            appendContent(event.data);
-        };
-
-      
-        eventSource.onclose = function(event) {
-            appendContent('Connection to server closed');
-        };
-
-       
-        // eventSource.onerror = function(event) {
-        //     appendContent('Error connecting to server');
-        // };
-    }
-
-    startStreaming();
 
     function runFrida() {
         const form = document.querySelector('form');

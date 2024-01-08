@@ -11,7 +11,6 @@ process = None
 
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
-
 class OsNotSupportedError(Exception):
     pass
 
@@ -27,8 +26,6 @@ def there_is_adb_and_devices():
             result = subprocess.run(["frida-ps -Uai"]+command, capture_output=True, text=True, check=True)
             # pass
         return result.stdout.strip()
-
-
     # check for connected devices on machine other than osx.
     if os.name not in ["darwin","posix"]:
         connected_devices = run_adb_command(["devices"]).split('\n')[1:]
@@ -58,17 +55,6 @@ def get_package_identifiers():
         return []
 
 def get_bypass_scripts():
-    # try:
-    #     scripts_directory_1 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 1")
-    #     bypass_scripts_1 = [f for f in os.listdir(scripts_directory_1) if f.endswith(".js")]
-
-    #     scripts_directory_2 = os.path.join(SCRIPTS_DIRECTORY, "Script Directory 2")
-    #     bypass_scripts_2 = [f for f in os.listdir(scripts_directory_2) if f.endswith(".js")]
-
-    #     return bypass_scripts_1, bypass_scripts_2
-    # except Exception as e:
-    #     print(f"Error getting bypass scripts: {e}")
-    #     return [], []
     list_script = json.load(open("script.json","r"))["scripts"]
     IOS = []
     ANDROID = []
@@ -96,23 +82,6 @@ def get_script_content_route():
     content = get_script_content(script_path)
     return content
 
-def generate_output():
-    global process
-    while process and process.poll() is None:
-        line_stdout = process.stdout.readline()
-        line_stderr = process.stderr.readline()
-
-        if not line_stdout and not line_stderr:
-            break
-
-        if line_stdout:
-            yield f'data: Stdout: {line_stdout.decode("utf-8")}\n\n'
-
-        if line_stderr:
-            yield f'data: Stderr: {line_stderr.decode("utf-8")}\n\n'
-    
-    if process: #fix problem for notype object
-        process.terminate()
 
 @app.route('/')
 def index():
@@ -150,7 +119,14 @@ def run_frida():
             process.terminate()
 
         command = f'frida -l {script_path} -U -f {package}'
-        process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # determining wich OS is used by user
+        if os.name in ["darwin","posix"]:
+            process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # when user use windows machine
+        elif os.name == "nt":
+            process = subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
+            raise OsNotSupportedError("This script only work on Windows, Linux and Darwin machines")
 
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
     except Exception as e:
@@ -168,9 +144,6 @@ def stop_frida():
 
     # return render_template('index.html', result='Frida process stopped', identifiers=get_package_identifiers())
 
-@app.route('/stream')
-def stream():
-    return Response(generate_output(), content_type='text/event-stream')
 
 if __name__ == '__main__':
     app.run(debug=True)
