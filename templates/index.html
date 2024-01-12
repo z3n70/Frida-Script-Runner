@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frida Script Runner</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.3/socket.io.js"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -48,8 +49,22 @@
             border-radius: 5px;
         }
 
-        pre {
+        #outputFrida {
+            font-family: 'Courier New', monospace;
+            background-color: #2b2b2b;
             margin: 0;
+            padding: 20px;
+            color:white;
+        }
+        ul {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+        }
+        li {
+            line-height: 1.4;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
         }
     </style>
 </head>
@@ -106,13 +121,22 @@
             <button type="submit" class="btn btn-primary">Run Frida</button>
             <button type="button" class="btn btn-danger" onclick="stopFrida()">Stop Frida</button>
         </form>
-
-        <div id="outputContainer">
-            <!-- Real-time output will be displayed here -->
+        <div id="outputContainer"></div>
+        <div id="outputFrida">
+            <ul id="output-list"></ul>
         </div>
+    
     </div>
 </body>
 <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+        socket.on('output', function(data) {
+        var outputList = document.getElementById('output-list');
+        var listItem = document.createElement('li');
+        listItem.appendChild(document.createTextNode(data.data));
+        outputList.appendChild(listItem);
+    });
 
     function toggleCustomScript() {
         var customScriptCheckbox = document.getElementById("customScriptCheckbox");
@@ -170,7 +194,6 @@
             .catch(error => console.error(error));
     }
 
-
     function runFrida() {
         const form = document.querySelector('form');
         const outputContainer = document.getElementById("outputContainer");
@@ -200,8 +223,7 @@
         const outputContainer = document.getElementById("outputContainer");
         outputContainer.innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + content + '</p></div>';
         outputContainer.scrollTop = outputContainer.scrollHeight; 
-    }
-
+}
     runFrida();
 </script>
 </html>

@@ -1,48 +1,69 @@
-from flask import Flask, render_template, request, Response, jsonify
+from flask import Flask, render_template, request, jsonify
+from flask_socketio import SocketIO
 import subprocess
 import os
 import json
 import base64
 import hashlib
-
+import threading
+import time
+import signal
+import logging
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 process = None
-
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
 class OsNotSupportedError(Exception):
     pass
 
-# fuction to check adb status and devices connectivity
+# adb status and connect
+def run_adb_command(command, timeout=5):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        return f"Error: ADB command failed. {e}"
+    
+
+def run_ideviceinfo(timeout=5):
+    try:
+        result = subprocess.run(["ideviceinfo"], capture_output=True, text=True, check=True, timeout=timeout)
+        return result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return "Error: ideviceinfo command timed out."
+    
 def there_is_adb_and_devices():
     adb_is_active = False
     available_devices = []
     message = ""
-    def run_adb_command(command):
-        if os.name not in ["darwin","posix"]:
-            result = subprocess.run(["adb"]+command, capture_output=True, text=True, check=True)
-        else:
-            result = subprocess.run(["frida-ps -Uai"]+command, capture_output=True, text=True, check=True)
-            # pass
-        return result.stdout.strip()
-    # check for connected devices on machine other than osx.
-    if os.name not in ["darwin","posix"]:
-        connected_devices = run_adb_command(["devices"]).split('\n')[1:]
+
+    try:
+        result = run_adb_command(["adb", "devices"])
+        connected_devices = result.strip().split('\n')[1:]
         device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
-        
+
         if device_ids:
             for device_id in device_ids:
-                model = run_adb_command(["-s", device_id, "shell", "getprop", "ro.product.model"])
-                serial_number = run_adb_command(["-s", device_id, "shell", "getprop", "ro.serialno"])
-                available_devices.append({"model":model,"serial_number":serial_number})
+                model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
+                serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
+                available_devices.append({"model": model, "serial_number": serial_number})
             adb_is_active = True
-            message = "device is avaliabe"
+            message = "Device is available"
+    except Exception as e:
+        message = f"Error checking Android device connectivity: {e}"
     else:
-        adb_is_active = True
-        message = "osx device always return True even device is not exist"
+        # for ios use ideviceinfo
+        try:
+            ideviceinfo_output = run_ideviceinfo()
+            if ideviceinfo_output:
+                adb_is_active = True
+                message = "iOS device is available"
+        except Exception as e:
+            message = f"Error checking iOS device connectivity: {e}"
 
-    return {"is_true":adb_is_active,"available_devices":available_devices,"message":message}
+    return {"is_true": adb_is_active, "available_devices": available_devices, "message": message}
 
 def get_package_identifiers():
     try:
@@ -94,7 +115,7 @@ def index():
         except Exception as e:
             return render_template('index.html', error=f"Error: {e}")
     else:
-        return "<body style='background-color:black;'><h1 style='color:red;'>There is no adb or device connected. Make sure your ADB is installed correctly then connect your device, run your frida server and reload this page</h1></body>"
+        return "<body style='background-color:#333; color:#fff; text-align:center; padding:50px; font-size:20px;'><h1 style='color:red;'>No USB or connected device found</h1><p>Please make sure that USB is installed correctly, connect your device, run the Frida server, and then reload this page.<br><br>If you use emulator please run the Frida server, and then reload this page.</p></body>"
     
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
@@ -111,40 +132,65 @@ def run_frida():
             script_path = os.path.join("tmp", script_name)
             with open(script_path, 'w') as file:
                 file.write(script_content)
-
         else:
             script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
 
         if process and process.poll() is None:
             process.terminate()
 
-        command = f'frida -l {script_path} -U -f {package}'
-        # determining wich OS is used by user
-        if os.name in ["darwin","posix"]:
-            process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # when user use windows machine
-        elif os.name == "nt":
-            process = subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
-            raise OsNotSupportedError("This script only work on Windows, Linux and Darwin machines")
+        # memakai threading flask
+        socketio_thread = threading.Thread(target=run_frida_with_socketio, args=(script_path, package))
+        socketio_thread.daemon = True
+        socketio_thread.start()
 
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
+    except KeyboardInterrupt:
+        return jsonify({"error": "Frida process interrupted by user."}), 500
     except Exception as e:
         return jsonify({"error": f"Error: {e}"}), 500
+
+    
+def run_frida_with_socketio(script_path, package):
+    global process
+
+    try:
+        command = ["frida", "-l", script_path, "-U", "-f", package]
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+        while True:
+            output = process.stdout.readline()
+            if output == "" and process.poll() is not None:
+                break
+            if output:
+                socketio.emit("output", {"data": output.strip()})
+                time.sleep(0.015)
+
+        socketio.emit("output", {"data": "Frida process finished."})
+    except KeyboardInterrupt:
+        socketio.emit("output", {"data": "Frida process interrupted by user."})
+    except Exception as e:
+        socketio.emit("output", {"data": f"Error: {e}"})
+
+@socketio.on("connect")
+def handle_connect():
+    pass
 
 @app.route('/stop-frida')
 def stop_frida():
     global process
 
+# proses dihentikan sebelum dikirim ke response
     if process and process.poll() is None:
-        process.terminate()
+        process.kill()
+        process.wait() 
         return 'Frida process stopped', 200
     else:
         return 'Frida process is not running', 200
 
-    # return render_template('index.html', result='Frida process stopped', identifiers=get_package_identifiers())
-
-
 if __name__ == '__main__':
-    app.run(debug=True)
-    # print(get_bypass_scripts())
+    try:
+        print("Please access http://127.0.0.1:5000")
+        socketio.run(app, debug=True)
+    except KeyboardInterrupt:
+        print("\nThanks :)")
+
