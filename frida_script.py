@@ -189,8 +189,19 @@ def stop_frida():
 
 if __name__ == '__main__':
     try:
-        print("Please access http://127.0.0.1:5000")
-        socketio.run(app, debug=True)
+        print("""\
+
+────██──────▀▀▀██
+──▄▀█▄▄▄─────▄▀█▄▄▄
+▄▀──█▄▄──────█─█▄▄
+─▄▄▄▀──▀▄───▄▄▄▀──▀▄
+─▀───────▀▀─▀───────▀▀
+       FSR v1.1
+                    """)
+        print("Please Access http://127.0.0.1:5000\n")
+
+        print("Press CTRL+C to stop this program.")
+        socketio.run(app, debug=False)
     except KeyboardInterrupt:
-        print("\nThanks :)")
+        print("\nThanks For Using This Tools ♡")
 
