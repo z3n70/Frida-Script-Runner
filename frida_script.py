@@ -15,6 +15,9 @@ socketio = SocketIO(app)
 process = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
+
+if "tmp" not in os.listdir("."):
+    os.mkdir("tmp")
 class OsNotSupportedError(Exception):
     pass
 
@@ -123,13 +126,14 @@ def run_frida():
 
     try:
         package = request.form['package']
-        use_custom_script = int(request.form['use_custom_script'])
+        use_custom_script = int(request.form['use_custom_script']) == 1
         selected_script = request.form['selected_script']
         script_content = request.form['script_content']
 
         if use_custom_script:
             script_name = hashlib.sha256(script_content.encode()).hexdigest() + ".js"
             script_path = os.path.join("tmp", script_name)
+            selected_script = script_name
             with open(script_path, 'w') as file:
                 file.write(script_content)
         else:

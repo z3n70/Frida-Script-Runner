@@ -201,6 +201,9 @@
         form.addEventListener('submit', function(event) {
             event.preventDefault();
 
+            var logOutput = document.getElementById('outputFrida');
+            logOutput.innerHTML = '<ul id="output-list"></ul>';
+
             const formData = new FormData(form);
             fetch('/run-frida', {
                 method: 'POST',
