@@ -118,8 +118,8 @@
                 <label class="form-check-label" for="customScriptCheckbox">Use Custom Script</label>
             </div>
 
-            <button type="submit" class="btn btn-primary">Run Frida</button>
-            <button type="button" class="btn btn-danger" onclick="stopFrida()">Stop Frida</button>
+            <button type="button" id="runBtn" class="btn btn-primary">Run Frida</button>
+            <button type="button" id="stopBtn" class="btn btn-danger">Stop Frida</button>
         </form>
         <div id="outputContainer"></div>
         <div id="outputFrida">
@@ -131,12 +131,18 @@
 <script>
         var socket = io.connect('http://' + document.domain + ':' + location.port);
 
+        var logOutput = document.getElementById('outputFrida');
+        var runButton = document.getElementById('runBtn');
+        var stopButton = document.getElementById('stopBtn');
+        runButton.disabled = false;
+        stopButton.disabled = true;
+
         socket.on('output', function(data) {
-        var outputList = document.getElementById('output-list');
-        var listItem = document.createElement('li');
-        listItem.appendChild(document.createTextNode(data.data));
-        outputList.appendChild(listItem);
-    });
+            var outputList = document.getElementById('output-list');
+            var listItem = document.createElement('li');
+            listItem.appendChild(document.createTextNode(data.data));
+            outputList.appendChild(listItem);
+        });
 
     function toggleCustomScript() {
         var customScriptCheckbox = document.getElementById("customScriptCheckbox");
@@ -185,48 +191,67 @@
             });
     }
 
-    function stopFrida() {
+    stopButton.addEventListener('click', function(event){
+        event.preventDefault();
+        stopButton.disabled = true;
+        runButton.disabled = false;
+        logOutput.innerHTML = '<ul id="output-list"></ul>';
         fetch('/stop-frida')
             .then(response => response.text())
             .then(data => {
                 document.getElementById("outputContainer").innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + data + '</p></div>';
             })
             .catch(error => console.error(error));
-    }
 
-    function runFrida() {
+    });
+    // function stopFrida() {
+    //     preventDefault();
+    //     stopButton.disabled = true;
+    //     runButton.disabled = false;
+    //     logOutput.innerHTML = '<ul id="output-list"></ul>';
+    //     fetch('/stop-frida')
+    //         .then(response => response.text())
+    //         .then(data => {
+    //             document.getElementById("outputContainer").innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + data + '</p></div>';
+    //         })
+    //         .catch(error => console.error(error));
+    // }
+
+    runButton.addEventListener('click', function(event) {
+            event.preventDefault();
+            runButton.disabled = true;
+            stopButton.disabled = false;
+            runFrida();
+        });
+
+    function runFrida(){
+
         const form = document.querySelector('form');
         const outputContainer = document.getElementById("outputContainer");
+        logOutput.innerHTML = '<ul id="output-list"></ul>';
 
-        form.addEventListener('submit', function(event) {
-            event.preventDefault();
-
-            var logOutput = document.getElementById('outputFrida');
-            logOutput.innerHTML = '<ul id="output-list"></ul>';
-
-            const formData = new FormData(form);
-            fetch('/run-frida', {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => response.json())
-            .then(data => {
-                
-                const content = data.result || data.error || 'Unknown error occurred';
-                appendContent(content);
-            })
-            .catch(error => {
-                console.error(error);
-                appendContent(`Error: ${error.message}`);
-            });
+        const formData = new FormData(form);
+        fetch('/run-frida', {
+            method: 'POST',
+            body: formData,
+        })
+        .then(response => response.json())
+        .then(data => {
+            
+            const content = data.result || data.error || 'Unknown error occurred';
+            appendContent(content);
+        })
+        .catch(error => {
+            console.error(error);
+            appendContent(`Error: ${error.message}`);
         });
-    }
 
+    }
     function appendContent(content) {
         const outputContainer = document.getElementById("outputContainer");
         outputContainer.innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + content + '</p></div>';
         outputContainer.scrollTop = outputContainer.scrollHeight; 
-}
+    }
     runFrida();
 </script>
 </html>
