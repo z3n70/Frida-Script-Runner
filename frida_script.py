@@ -163,7 +163,7 @@ def run_frida_with_socketio(script_path, package):
                 break
             if output:
                 socketio.emit("output", {"data": output.strip()})
-                time.sleep(0.015)
+                time.sleep(0.010)
 
         socketio.emit("output", {"data": "Frida process finished."})
     except KeyboardInterrupt:
