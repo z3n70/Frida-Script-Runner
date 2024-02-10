@@ -118,8 +118,8 @@ def index():
         except Exception as e:
             return render_template('index.html', error=f"Error: {e}")
     else:
-        return "<body style='background-color:#333; color:#fff; text-align:center; padding:50px; font-size:20px;'><h1 style='color:red;'>No USB or connected device found</h1><p>Please make sure that USB is installed correctly, connect your device, run the Frida server, and then reload this page.<br><br>If you use emulator please run the Frida server, and then reload this page.</p></body>"
-    
+        return render_template('no-usb.html')
+
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
     global process
@@ -207,5 +207,7 @@ if __name__ == '__main__':
         print("Press CTRL+C to stop this program.")
         socketio.run(app, debug=False)
     except KeyboardInterrupt:
-        print("\nThanks For Using This Tools ♡")
+        pass
+
+    print("\nThanks For Using This Tools ♡")
 

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content='IE=edge' http-equiv='X-UA-Compatible' />
+
+    <link href="{{ url_for('static', filename='images/favicon.ico') }}" rel="apple-touch-icon" sizes="120x120" />
+    <link href="{{ url_for('static', filename='images/favicon.ico') }}" rel="apple-touch-icon" sizes="152x152" />
+    <link href="{{ url_for('static', filename='images/favicon.ico') }}" rel="icon" type="image/x-icon" />
+    <link href="{{ url_for('static', filename='images/favicon.ico') }}" rel="shortcut icon" type="image/x-icon" />
+
+    <title>Frida Script Runner | Lost's USB</title>
+
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/main.css') }}" class="rel">
+    <style>
+        body {
+            background-color: #f4f4f4;
+        }
+    </style>
+    
+</head>
+
+<body>
+    <section>
+        <h3 class="itemTitle">No USB or Connected Device Found !</h3>
+        <br><br>
+        <div id="reading-key">
+            <div id="key">
+                <span></span>
+                <span></span>
+            </div>
+            <div id="reading-animation">
+                <span></span>
+            </div>
+        </div>
+        <br><br>
+        <div class="itemDescription">
+            <p>
+                Please make sure that USB is installed correctly, 
+                <br>
+                connect your device, run the Frida server, and then reload this page.
+                <br><br>
+                If you use emulator please run the Frida server, and then reload this page.
+            </p>
+        </div>
+    </section>
+</body>
+
+
+</html>
