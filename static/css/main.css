@@ -128,7 +128,7 @@ body {
   margin: 0;
   font-weight: 700;
   font-family: var(--font-head);
-  color: var(--head-color);
+  color: #1f1f1f;
 }
 
 .itemDescription {
@@ -145,6 +145,7 @@ body {
   .itemTitle {
     font-size: 15px;
     font-weight: 600;
+    font-color: #1f1f1f;
   }
 
   #reading-key {
