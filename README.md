@@ -21,10 +21,10 @@ Frida Script Runner is a versatile web-based tool designed for running Frida scr
 ## Feature Details
 
 ### How to Use
-[![frida script runner](https://markdown-videos-api.jorgenkh.no/url?url=https%3A%2F%2Fyoutu.be%2F1Egu8DX-8Qo%3Fsi%3DKg_cFYgq4Ngz4DmK)](https://youtu.be/1Egu8DX-8Qo?si=Kg_cFYgq4Ngz4DmK#")
+https://github.com/z3n70/Frida-Script-Runner/assets/39817707/8ef5b44c-4052-4a6b-8a94-0a9a03255402
 
 ### Custom Script
-[![frida script runner custome script](https://markdown-videos-api.jorgenkh.no/url?url=https%3A%2F%2Fyoutu.be%2F3GenHhYtK6E%3Fsi%3D5mgFNPs3S7xpL_mO)](https://youtu.be/3GenHhYtK6E?si=5mgFNPs3S7xpL_mO)
+https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-99c1-873b7fb2c4c7
 
 ## Prerequisites
 
