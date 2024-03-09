@@ -1,38 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frida Script Runner</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.3/socket.io.js"></script>
     <style>
         body {
-            background-color: #fff;
+            background-color: #f8f9fa;
             color: #333;
-            padding: 50px;
+            padding: 20px;
         }
 
         .container {
-            background-color: #e4eaef;
-            padding: 20px;
+            background-color: #ffffff;
+            padding: 30px;
             border-radius: 10px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
         }
 
         .jumbotron {
             background: #204ecf;
             color: #fff;
             padding: 20px;
-            border-radius: 0;
+            border-radius: 10px;
             margin-bottom: 30px;
         }
 
         .form-control {
-            border-radius: 0;
+            border-radius: 5px;
+            margin-top: 10px;
         }
 
         .btn {
-            border-radius: 20;
+            border-radius: 5px;
+            margin-top: 10px;
         }
 
         #outputContainer {
@@ -44,15 +49,32 @@
             border-radius: 5px;
         }
 
-        pre {
+        #outputFrida {
+            font-family: 'Courier New', monospace;
+            background-color: #2b2b2b;
             margin: 0;
+            padding: 20px;
+            color:white;
+        }
+        ul {
+            list-style-type: none;
+            margin: 0;
+            padding: 0;
+        }
+        li {
+            line-height: 1.4;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
         }
     </style>
 </head>
-<body>
-    <h1 class="display-3 text-center">Frida Script Runner</h1>
 
+<body>
     <div class="container">
+        <div class="jumbotron text-center">
+            <h1 class="display-4">Frida Script Runner</h1>
+        </div>
+
         <form action="/run-frida" method="post">
             <div class="form-group">
                 <label for="package">Select Package:</label>
@@ -72,33 +94,68 @@
                 <label for="selected_script">Select Bypass Script:</label>
                 <select name="selected_script" id="selectedScript" class="form-control" required onchange="updateTextArea()">
                     <optgroup label="Your Android Script" data-directory="Script Directory 1">
-                        {% for script in bypass_scripts_1 %}
-                            <option value="{{ script }}">{{ script }}</option>
+                        {% for script in bypass_scripts_android %}
+                            <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
                         {% endfor %}
                     </optgroup>
                     <optgroup label="Your iOS Script" data-directory="Script Directory 2">
-                        {% for script in bypass_scripts_2 %}
-                            <option value="{{ script }}">{{ script }}</option>
+                        {% for script in bypass_scripts_ios %}
+                            <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }} </option>
                         {% endfor %}
                     </optgroup>
                 </select>
             </div>
 
+            <input type="hidden" name="use_custom_script" id="useCustomScript" value="0">
+
             <div class="form-group">
                 <label for="script_content">Script Content:</label>
-                <textarea name="script_content" id="scriptContent" class="form-control" rows="10" cols="50" placeholder="Script Content" readonly></textarea>
+                <textarea name="script_content" id="scriptContent" class="form-control" rows="10" cols="50" placeholder="Script Content"></textarea>
             </div>
 
-            <button type="submit" class="btn btn-primary">Run Frida</button>
-            <button type="button" class="btn btn-danger" onclick="stopFrida()">Stop Frida</button>
-        </form>
+            <div class="form-group form-check">
+                <input type="checkbox" class="form-check-input" id="customScriptCheckbox" onchange="toggleCustomScript()">
+                <label class="form-check-label" for="customScriptCheckbox">Use Custom Script</label>
+            </div>
 
-        <div id="outputContainer">
-            <!-- Real-time output will be displayed here -->
+            <button type="button" id="runBtn" class="btn btn-primary">Run Frida</button>
+            <button type="button" id="stopBtn" class="btn btn-danger">Stop Frida</button>
+        </form>
+        <div id="outputContainer"></div>
+        <div id="outputFrida">
+            <ul id="output-list"></ul>
         </div>
+        <br><br>
+        <center><p>&copy; <a href="https://github.com/z3n70">z3n70 - Secrash</a></p></center>
     </div>
 </body>
 <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+        var logOutput = document.getElementById('outputFrida');
+        var runButton = document.getElementById('runBtn');
+        var stopButton = document.getElementById('stopBtn');
+        runButton.disabled = false;
+        stopButton.disabled = true;
+
+        socket.on('output', function(data) {
+            var outputList = document.getElementById('output-list');
+            var listItem = document.createElement('li');
+            listItem.appendChild(document.createTextNode(data.data));
+            outputList.appendChild(listItem);
+        });
+
+    function toggleCustomScript() {
+        var customScriptCheckbox = document.getElementById("customScriptCheckbox");
+        var useCustomScriptInput = document.getElementById("useCustomScript");
+
+        if (customScriptCheckbox.checked) {
+            useCustomScriptInput.value = "1";
+        } else {
+            useCustomScriptInput.value = "0";
+        }
+    }
+
     function filterOptions() {
         var input, filter, select, option, i, txtValue;
         input = document.getElementById("searchInput");
@@ -135,73 +192,67 @@
             });
     }
 
-    function stopFrida() {
+    stopButton.addEventListener('click', function(event){
+        event.preventDefault();
+        stopButton.disabled = true;
+        runButton.disabled = false;
+        logOutput.innerHTML = '<ul id="output-list"></ul>';
         fetch('/stop-frida')
             .then(response => response.text())
             .then(data => {
                 document.getElementById("outputContainer").innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + data + '</p></div>';
             })
             .catch(error => console.error(error));
-    }
 
-    function startStreaming() {
-        const outputContainer = document.getElementById("outputContainer");
+    });
+    // function stopFrida() {
+    //     preventDefault();
+    //     stopButton.disabled = true;
+    //     runButton.disabled = false;
+    //     logOutput.innerHTML = '<ul id="output-list"></ul>';
+    //     fetch('/stop-frida')
+    //         .then(response => response.text())
+    //         .then(data => {
+    //             document.getElementById("outputContainer").innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + data + '</p></div>';
+    //         })
+    //         .catch(error => console.error(error));
+    // }
 
-      
-        const appendContent = (content) => {
-            outputContainer.innerHTML += '<pre>' + content + '</pre>';
-            outputContainer.scrollTop = outputContainer.scrollHeight; 
-        };
+    runButton.addEventListener('click', function(event) {
+            event.preventDefault();
+            runButton.disabled = true;
+            stopButton.disabled = false;
+            runFrida();
+        });
 
-        const eventSource = new EventSource('/stream');
-        eventSource.onmessage = function(event) {
-            appendContent(event.data);
-        };
+    function runFrida(){
 
-      
-        eventSource.onclose = function(event) {
-            appendContent('Connection to server closed');
-        };
-
-       
-        // eventSource.onerror = function(event) {
-        //     appendContent('Error connecting to server');
-        // };
-    }
-
-    startStreaming();
-
-    function runFrida() {
         const form = document.querySelector('form');
         const outputContainer = document.getElementById("outputContainer");
+        logOutput.innerHTML = '<ul id="output-list"></ul>';
 
-        form.addEventListener('submit', function(event) {
-            event.preventDefault();
-
-            const formData = new FormData(form);
-            fetch('/run-frida', {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => response.json())
-            .then(data => {
-                
-                const content = data.result || data.error || 'Unknown error occurred';
-                appendContent(content);
-            })
-            .catch(error => {
-                console.error(error);
-                appendContent(`Error: ${error.message}`);
-            });
+        const formData = new FormData(form);
+        fetch('/run-frida', {
+            method: 'POST',
+            body: formData,
+        })
+        .then(response => response.json())
+        .then(data => {
+            
+            const content = data.result || data.error || 'Unknown error occurred';
+            appendContent(content);
+        })
+        .catch(error => {
+            console.error(error);
+            appendContent(`Error: ${error.message}`);
         });
-    }
 
+    }
     function appendContent(content) {
         const outputContainer = document.getElementById("outputContainer");
         outputContainer.innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + content + '</p></div>';
         outputContainer.scrollTop = outputContainer.scrollHeight; 
     }
-
     runFrida();
 </script>
 </html>
