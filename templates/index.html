@@ -1,207 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frida Script Runner</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <style>
-        body {
-            background-color: #fff;
-            color: #333;
-            padding: 50px;
-        }
-
-        .container {
-            background-color: #e4eaef;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .jumbotron {
-            background: #204ecf;
-            color: #fff;
-            padding: 20px;
-            border-radius: 0;
-            margin-bottom: 30px;
-        }
-
-        .form-control {
-            border-radius: 0;
-        }
-
-        .btn {
-            border-radius: 20;
-        }
-
-        #outputContainer {
-            margin-top: 20px;
-            overflow-y: auto;
-            max-height: 300px;
-            border: 1px solid #ddd;
-            padding: 10px;
-            border-radius: 5px;
-        }
-
-        pre {
-            margin: 0;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/main.css') }}" class="rel">
 </head>
-<body>
-    <h1 class="display-3 text-center">Frida Script Runner</h1>
 
+<body>
     <div class="container">
+        <div class="jumbotron text-center">
+            <h1 class="display-4">Frida Script Runner</h1>
+        </div>
+
         <form action="/run-frida" method="post">
             <div class="form-group">
                 <label for="package">Select Package:</label>
-                <input type="text" class="form-control" id="searchInput" oninput="filterOptions()" placeholder="Search for packages..">
+                <input type="text" class="form-control" id="searchInput" oninput="filterOptions()"
+                    placeholder="Search for packages..">
                 <select name="package" id="packageSelect" class="form-control mt-2" required>
                     {% if identifiers %}
-                        {% for identifier in identifiers %}
-                            <option value="{{ identifier }}">{{ identifier }}</option>
-                        {% endfor %}
+                    {% for identifier in identifiers %}
+                    <option value="{{ identifier }}">{{ identifier }}</option>
+                    {% endfor %}
                     {% else %}
-                        <option disabled>No packages detected. Connect your USB device and run Frida.</option>
+                    <option disabled>No packages detected. Connect your USB device and run Frida.</option>
                     {% endif %}
                 </select>
             </div>
 
             <div class="form-group">
                 <label for="selected_script">Select Bypass Script:</label>
-                <select name="selected_script" id="selectedScript" class="form-control" required onchange="updateTextArea()">
+                <select name="selected_script" id="selectedScript" class="form-control" required
+                    onchange="updateTextArea()">
                     <optgroup label="Your Android Script" data-directory="Script Directory 1">
-                        {% for script in bypass_scripts_1 %}
-                            <option value="{{ script }}">{{ script }}</option>
+                        {% for script in bypass_scripts_android %}
+                        <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name']
+                            }}</option>
                         {% endfor %}
                     </optgroup>
                     <optgroup label="Your iOS Script" data-directory="Script Directory 2">
-                        {% for script in bypass_scripts_2 %}
-                            <option value="{{ script }}">{{ script }}</option>
+                        {% for script in bypass_scripts_ios %}
+                        <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name']
+                            }} </option>
                         {% endfor %}
                     </optgroup>
                 </select>
             </div>
 
+            <input type="hidden" name="use_custom_script" id="useCustomScript" value="0">
+
             <div class="form-group">
                 <label for="script_content">Script Content:</label>
-                <textarea name="script_content" id="scriptContent" class="form-control" rows="10" cols="50" placeholder="Script Content" readonly></textarea>
+                <textarea name="script_content" id="scriptContent" class="form-control" rows="10" cols="50"
+                    placeholder="Script Content"></textarea>
             </div>
 
-            <button type="submit" class="btn btn-primary">Run Frida</button>
-            <button type="button" class="btn btn-danger" onclick="stopFrida()">Stop Frida</button>
-        </form>
+            <div class="form-group form-check">
+                <input type="checkbox" class="form-check-input" id="customScriptCheckbox"
+                    onchange="toggleCustomScript()">
+                <label class="form-check-label" for="customScriptCheckbox">Use Custom Script</label>
+            </div>
 
-        <div id="outputContainer">
-            <!-- Real-time output will be displayed here -->
+            <button type="button" id="runBtn" class="btn btn-primary">Run Frida</button>
+            <button type="button" id="stopBtn" class="btn btn-danger">Stop Frida</button>
+        </form>
+        <div id="outputContainer"></div>
+        <div id="outputFrida">
+            <ul id="output-list"></ul>
         </div>
+
     </div>
 </body>
-<script>
-    function filterOptions() {
-        var input, filter, select, option, i, txtValue;
-        input = document.getElementById("searchInput");
-        filter = input.value.toUpperCase();
-        select = document.getElementById("packageSelect");
-        options = select.getElementsByTagName("option");
 
-        for (i = 0; i < options.length; i++) {
-            txtValue = options[i].textContent || options[i].innerText;
-            if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                options[i].style.display = "";
-            } else {
-                options[i].style.display = "none";
-            }
-        }
-    }
-
-    function updateTextArea() {
-        var select = document.getElementById("selectedScript");
-        var scriptContentTextArea = document.getElementById("scriptContent");
-        var selectedScript = select.options[select.selectedIndex].value;
-
-        fetch(`/get-script-content?script=${selectedScript}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Script content not found');
-                }
-                return response.text();
-            })
-            .then(data => scriptContentTextArea.value = data)
-            .catch(error => {
-                scriptContentTextArea.value = `Error loading script content: ${error.message}`;
-                console.error(error);
-            });
-    }
-
-    function stopFrida() {
-        fetch('/stop-frida')
-            .then(response => response.text())
-            .then(data => {
-                document.getElementById("outputContainer").innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + data + '</p></div>';
-            })
-            .catch(error => console.error(error));
-    }
-
-    function startStreaming() {
-        const outputContainer = document.getElementById("outputContainer");
-
-      
-        const appendContent = (content) => {
-            outputContainer.innerHTML += '<pre>' + content + '</pre>';
-            outputContainer.scrollTop = outputContainer.scrollHeight; 
-        };
-
-        const eventSource = new EventSource('/stream');
-        eventSource.onmessage = function(event) {
-            appendContent(event.data);
-        };
-
-      
-        eventSource.onclose = function(event) {
-            appendContent('Connection to server closed');
-        };
-
-       
-        // eventSource.onerror = function(event) {
-        //     appendContent('Error connecting to server');
-        // };
-    }
-
-    startStreaming();
-
-    function runFrida() {
-        const form = document.querySelector('form');
-        const outputContainer = document.getElementById("outputContainer");
-
-        form.addEventListener('submit', function(event) {
-            event.preventDefault();
-
-            const formData = new FormData(form);
-            fetch('/run-frida', {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => response.json())
-            .then(data => {
-                
-                const content = data.result || data.error || 'Unknown error occurred';
-                appendContent(content);
-            })
-            .catch(error => {
-                console.error(error);
-                appendContent(`Error: ${error.message}`);
-            });
-        });
-    }
-
-    function appendContent(content) {
-        const outputContainer = document.getElementById("outputContainer");
-        outputContainer.innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + content + '</p></div>';
-        outputContainer.scrollTop = outputContainer.scrollHeight; 
-    }
-
-    runFrida();
-</script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </html>
