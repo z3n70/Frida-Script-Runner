@@ -1,6 +1,7 @@
 # Frida Script Runner
+Frida Script Runner is a versatile web-based tool designed for Android and iOS penetration testing purposes.
 
-Frida Script Runner is a versatile web-based tool designed for running Frida scripts seamlessly on mobile applications Android and iOS. This tool streamlines the process of interacting with Frida, offering a user-friendly interface through Flask, a Python web framework.
+This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask, a Python framework, to enhance the efficiency of penetration testing tasks.
 
 ![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
 
@@ -51,16 +52,19 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
 
 ## Usage
 1. Connect your USB device and run Frida Server. (root or jailbreak required)
+
 2. Open the web interface and select the target package and script.
+
 3. Click "Run Frida" to start the Frida process.
+
 4. View real-time output in the output container.
 
-Note: If you intend to modify or add frida script files, ensure file are placed in the correct directory. Script Directory 1 For Android and Script Directory 2 For iOS, and you can see script.json for structure file and name
+**Note: If you intend to modify or add frida script files, ensure file are placed in the correct directory. Script Directory 1 For Android and Script Directory 2 For iOS, and you can see script.json for structure file and name**
 
 ## Contributing
 Contributions are welcome! Please contact me 
 
-## Thanks and Support
+### Thanks and Support
 [Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Koped](https://github.com/secrash), 
 
 # Acknowledgments
