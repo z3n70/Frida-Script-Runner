@@ -117,11 +117,15 @@
   }
   
   body {
-    font-family: var(--font-body);
-    font-size: 14px;
-    color: var(--body-color);
-    word-break: break-word;
+      margin: auto;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: auto;
+      background: linear-gradient(315deg, #7311a9 11%, #204ecf 33%, #343fa8 77%);
+      animation: gradient 15s ease infinite;
+      background-size: 400% 400%;
+      background-attachment: fixed;
   }
+
   
   .itemTitle {
     font-size: 18px;
@@ -171,6 +175,8 @@
     background-color: var(--body-bg);
     text-align: center;
     max-width: 100%;
+    max-height: 100%;
+    width:auto;
     margin: 0 auto;
     padding: 50px;
     box-sizing: border-box;
@@ -364,55 +370,135 @@
     }
   }
   
+  /* styles.css */
+
+  
   .container {
-    background-color: #ffffff;
-    padding: 30px;
+    width:80vw;
+    height: 90vh;
+    background-color: rgba(255, 255, 255, 0.8);
+    box-sizing: border-box;
+    position: absolute;
+    box-shadow: 0 5px 15px 0 rgba(0, 0, 0, 0.1);
+    top: 50%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-50%);
     border-radius: 10px;
     box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
-    margin-top: 20px;
-  }
-  
-  .jumbotron {
-    background: #204ecf;
-    color: #fff;
     padding: 20px;
-    border-radius: 10px;
-    margin-bottom: 30px;
+/*    overflow: hidden;*/
   }
-  
-  .form-control {
-    border-radius: 5px;
-    margin-top: 10px;
-  }
-  
-  .btn {
-    border-radius: 5px;
-    margin-top: 10px;
-  }
-  
-  #outputContainer {
-    margin-top: 20px;
-    overflow-y: auto;
-    max-height: 300px;
-    border: 1px solid #ddd;
+  .fsr-header {
+    display: flex;
+    flex-flow: row;
+    height: auto;
     padding: 10px;
-    border-radius: 5px;
+    color: #3559E0;
+    align-items: center;
+    font-family: "Rubik Mono One", monospace;
+    font-weight: 100;
+    font-style: normal;
+  }
+  img {
+    max-width: 100%;
+    width: 60px;
+    height: auto;
+    background: #3559E0;
+    padding: 10px;
+    border-radius: 10px;
+    margin-right: 10px ;
+
+  }
+  .fsr-body {
+    padding: 10px;
+    display: flex;
+    flex-flow: row;
+/*    background: #ffff;*/
+    border-radius: 10px;
+    justify-content: flex-start;
+/*    align-items: center;*/
+    height:86%;
+    overflow: hidden;
+/*    flex-wrap: no-wrap;*/
   }
   
-  #outputFrida {
-    font-family: "Courier New", monospace;
-    background-color: #2b2b2b;
-    margin: 0;
-    padding: 20px;
+  .form-wrapper {
+/*    background: #ffff;*/
+    padding: 10px;
+    width: 50%;
+/*    background: red;*/
+  }
+  .log-wrapper {
+/*    background: #ffff;*/
+    padding: 5px;
+    width: 50%;
+    height: 100%;
+    display: flex;
+    flex-flow: column;
+
+  }
+  .log-wrapper p {
+    font-weight: bolder;
+  }
+  .log {
+    height: 50%;
+    background: #1D2B53;
+    color: #79AC78;
+    font-size: 12px;
+    overflow-y: scroll;
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .fsr-footer {
+    color:#3559E0;
+  }
+  .fsr-footer a {
+    text-decoration: none;
+    color:#3559E0;
+  }
+  .form-group {
+    display: flex;
+    flex-flow: column;
+    margin-bottom: 20px;
+    font-weight: bold;
+  }
+  .form-check {
+/*    background: red;*/
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    flex-flow: row;
+  }
+
+  #runBtn {
+    background: #3559E0;
     color: white;
+    width: 100px;
+    height: 40px;
+    border-radius: 10px;
+    border: none;
   }
-  ul {
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
+  #stopBtn {
+    background: #D04848;
+    color: white;
+    width: 100px;
+    height: 40px;
+    border-radius: 10px;
+    border: none;
   }
-  li {
-    line-height: 1.4;
-    white-space: pre-wrap;
-    overflow-wrap: break-word;
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  
+  input, textarea, select {
+      width: 100%; /* Full width */
+      padding: 10px; /* Padding for spacing */
+      margin: 5px 0; /* Margin for spacing */
+      box-sizing: border-box; /* Include padding and border in element's total width and height */
+      border: 1px solid #ccc; /* Border style */
+      border-radius: 5px; /* Rounded corners */
+      background-color: #fff; /* Background color */
+      font-size: 16px; /* Font size */
+      color: #333; /* Text color */
+      transition: border-color 0.3s ease; /* Smooth transition for border color */
   }

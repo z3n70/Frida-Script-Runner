@@ -21,6 +21,17 @@ if "tmp" not in os.listdir("."):
 class OsNotSupportedError(Exception):
     pass
 
+def get_device_type():
+    if os.name == 'nt':
+        return "Windows"
+    elif os.name == 'posix':
+        if os.uname().sysname == 'Darwin':
+            return "macOS"
+        else:
+            return "Linux"
+    else:
+        return "Unknown"
+
 # adb status and connect
 def run_adb_command(command, timeout=5):
     try:
@@ -37,25 +48,25 @@ def run_ideviceinfo(timeout=5):
     except subprocess.TimeoutExpired:
         return "Error: ideviceinfo command timed out."
     
-def there_is_adb_and_devices():
+def there_is_adb_and_devices(running_device_type):
     adb_is_active = False
     available_devices = []
     message = ""
+    if running_device_type in ["Windows","Linux"]:
+        try:
+            result = run_adb_command(["adb", "devices"])
+            connected_devices = result.strip().split('\n')[1:]
+            device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
 
-    try:
-        result = run_adb_command(["adb", "devices"])
-        connected_devices = result.strip().split('\n')[1:]
-        device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
-
-        if device_ids:
-            for device_id in device_ids:
-                model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
-                serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
-                available_devices.append({"model": model, "serial_number": serial_number})
-            adb_is_active = True
-            message = "Device is available"
-    except Exception as e:
-        message = f"Error checking Android device connectivity: {e}"
+            if device_ids:
+                for device_id in device_ids:
+                    model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
+                    serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
+                    available_devices.append({"model": model, "serial_number": serial_number})
+                adb_is_active = True
+                message = "Device is available"
+        except Exception as e:
+            message = f"Error checking Android device connectivity: {e}"
     else:
         # for ios use ideviceinfo
         try:
@@ -70,8 +81,13 @@ def there_is_adb_and_devices():
 
 def get_package_identifiers():
     try:
-        result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
-        lines = result.stdout.strip().split('\n')[1:]
+        if get_device_type() in ["Windows","Linux"]:
+            process = subprocess.Popen(['frida-ps', '-Uai'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            result, _ = process.communicate()
+            lines = result.strip().split('\n')[1:]
+        else:
+            result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
+            lines = result.stdout.strip().split('\n')[1:]
         identifiers = [line.split()[-1] for line in lines]
         return identifiers
     except Exception as e:
@@ -109,7 +125,8 @@ def get_script_content_route():
 
 @app.route('/')
 def index():
-    adb_check = there_is_adb_and_devices()
+    device_type = get_device_type()
+    adb_check = there_is_adb_and_devices(device_type)
     if adb_check["is_true"]:
         try:
             identifiers = get_package_identifiers()
@@ -118,7 +135,7 @@ def index():
         except Exception as e:
             return render_template('index.html', error=f"Error: {e}")
     else:
-        return render_template('no-usb.html')#"<body style='background-color:#333; color:#fff; text-align:center; padding:50px; font-size:20px;'><h1 style='color:red;'>No USB or connected device found</h1><p>Please make sure that USB is installed correctly, connect your device, run the Frida server, and then reload this page.<br><br>If you use emulator please run the Frida server, and then reload this page.</p></body>"
+        return render_template('no-usb.html')
     
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
@@ -205,6 +222,8 @@ if __name__ == '__main__':
         print("Please Access http://127.0.0.1:5000\n")
 
         print("Press CTRL+C to stop this program.")
-        socketio.run(app, debug=True)
+        socketio.run(app, debug=True if get_device_type() != 'Windows' else False)
+        # app.run(debug=True)
     except KeyboardInterrupt:
         print("\nThanks For Using This Tools ♡")
+    # print(get_package_identifiers())
