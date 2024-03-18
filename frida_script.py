@@ -222,7 +222,7 @@ if __name__ == '__main__':
         print("Please Access http://127.0.0.1:5000\n")
 
         print("Press CTRL+C to stop this program.")
-        socketio.run(app, debug=True if get_device_type() != 'Windows' else False)
+        socketio.run(app, debug=True if get_device_type() not in ['Windows','Linux'] else False)
         # app.run(debug=True)
     except KeyboardInterrupt:
         print("\nThanks For Using This Tools ♡")
