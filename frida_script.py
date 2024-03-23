@@ -35,7 +35,7 @@ def get_device_type():
 # adb status and connect
 def run_adb_command(command, timeout=5):
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout, shell=True)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         return f"Error: ADB command failed. {e}"
@@ -223,6 +223,8 @@ if __name__ == '__main__':
 
         print("Press CTRL+C to stop this program.")
         socketio.run(app, debug=True if get_device_type() not in ['Windows','Linux'] else False)
+        # socketio.run(app, debug=True )
+        # print(there_is_adb_and_devices(get_device_type()))
         # app.run(debug=True)
     except KeyboardInterrupt:
         print("\nThanks For Using This Tools ♡")

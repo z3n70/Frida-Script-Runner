@@ -1,283 +1,171 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Frida Script Runner</title>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='main.css') }}">
+    <!-- <link
+      rel="stylesheet"
+      type="text/css"
+      href="../static/main.css"
+    /> -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+    />
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.3/socket.io.js"></script>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="../static/custom.css"
+    />
 
-    <style>
-        body {
-            margin: auto;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            overflow: auto;
-            background: linear-gradient(315deg, #7311a9 11%, #204ecf 33%, #343fa8 77%);
-            animation: gradient 15s ease infinite;
-            background-size: 400% 400%;
-            background-attachment: fixed;
-        }
-
-        @keyframes gradient {
-            0% {
-                background-position: 0% 0%;
-            }
-            50% {
-                background-position: 100% 100%;
-            }
-            100% {
-                background-position: 0% 0%;
-            }
-        }
-
-        .wave {
-            background: rgb(255 255 255 / 25%);
-            border-radius: 1000% 1000% 0 0;
-            position: fixed;
-            width: 200%;
-            height: 25em;
-            animation: wave 10s -3s linear infinite;
-            transform: translate3d(0, 0, 0);
-            opacity: 0.8;
-            bottom: 0;
-            left: 0;
-            z-index: -1;
-        }
-
-        .wave:nth-of-type(2) {
-            bottom: -1.25em;
-            animation: wave 18s linear reverse infinite;
-            opacity: 0.8;
-        }
-
-        .wave:nth-of-type(3) {
-            bottom: -2.5em;
-            animation: wave 20s -1s reverse infinite;
-            opacity: 0.9;
-        }
-
-        @keyframes wave {
-            2% {
-                transform: translateX(1);
-            }
-
-            25% {
-                transform: translateX(-25%);
-            }
-
-            50% {
-                transform: translateX(-50%);
-            }
-
-            75% {
-                transform: translateX(-25%);
-            }
-
-            100% {
-                transform: translateX(1);
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="fsr-header">
-            <img src="static/FSR-icon.png">
-            <h1>Frida Script Runner</h1>
-        </div>
-        <div class="fsr-body">
-            <div class="form-wrapper">
-                <form action="/run-frida" method="post" class="form-container">
-                    <div class="form-group">
-                        <label for="package">Select Package:</label>
-                        <input type="text" id="searchInput" oninput="filterOptions()" placeholder="Search for packages.." class="form-control">
-                        <select name="package" id="packageSelect" class="form-control mt-2" required>
-                            {% if identifiers %}
-                                {% for identifier in identifiers %}
-                                    <option value="{{ identifier }}">{{ identifier }}</option>
-                                {% endfor %}
-                            {% else %}
-                                <option disabled>No packages detected. Connect your USB device and run Frida.</option>
-                            {% endif %}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="selected_script">Select Bypass Script:</label>
-                        <select name="selected_script" id="selectedScript" class="form-control" required onchange="updateTextArea()">
-                            <optgroup label="Your Android Script" data-directory="Script Directory 1">
-                                {% for script in bypass_scripts_android %}
-                                    <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
-                                {% endfor %}
-                            </optgroup>
-                            <optgroup label="Your iOS Script" data-directory="Script Directory 2">
-                                {% for script in bypass_scripts_ios %}
-                                    <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
-                                {% endfor %}
-                            </optgroup>
-                        </select>
-                        <input type="hidden" name="use_custom_script" id="useCustomScript" value="0">
-                    </div>
-                    <div class="form-group">
-                        <label for="script_content">Script Content:</label>
-                        <textarea name="script_content" id="scriptContent" rows="15" cols="50" placeholder="Script Content" class="form-control"></textarea>
-                    </div>
-                    <div class="form-check">
-                        <input name="customScriptCheckbox" type="checkbox" id="customScriptCheckbox" onchange="toggleCustomScript()">
-                        <label for="customScriptCheckbox">Use Custom Script</label>
-                    </div>
-                    <div class="button-group">
-                        <button type="button" id="runBtn">Run Frida</button>
-                        <button type="button" id="stopBtn">Stop Frida</button>
-                    </div>
-                </form>
+  </head>
+  <body>
+    <div class="container1">
+      <div class=" justify-content-center logo">
+          <img src="../static/FSR-logo.png" class="size-logo mt-3" alt="logo">
+          <h2 class="text-center white">Frida Script Runner</h1>
+      </div>
+        <div class="row">
+        <div class="col bg">
+            <label for="exampleFormControlInput1" class="form-label">Your Devices</label>
+            <div class=" mb-3">
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio1" value="option1">
+                <label class="form-check-label" for="inlineRadio1">Android</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio2" value="option2">
+                <label class="form-check-label" for="inlineRadio2">iOS</label>
+              </div>
             </div>
-
-            <div class="log-wrapper">
-                <p>FSR logs:</p>
-                <div id="outputContainer" class="log"></div>
-                <p>Frida logs:</p>
-                <div id="outputFrida" class="log">
-                    <ul id="output-list"></ul>
+          <div class="mb-3">
+            <label for="exampleFormControlInput1" class="form-label">Select Package</label>
+            <input type="email" class="form-control" id="exampleFormControlInput1" placeholder="Search for package . . .">
+          </div>
+          <select class="form-select" aria-label="Default select example">
+            <option selected>Open this select menu</option>
+            <option value="1">One</option>
+            <option value="2">Two</option>
+            <option value="3">Three</option>
+          </select>
+          <div class="mt-3">
+            <label for="exampleFormControlInput1" class="form-label">Select Bypass Script</label>
+            <select class="form-select" aria-label="Default select example">
+              <option selected>Open this select menu</option>
+              <option value="1">One</option>
+              <option value="2">Two</option>
+              <option value="3">Three</option>
+            </select>
+          </div>
+          <div class="mt-3">
+            <label for="exampleFormControlInput1" class="form-label">Script Content</label>
+            <textarea class="form-control" id="exampleFormControlTextarea1" rows="13"></textarea>
+          </div>
+          <div class="d-flex justify-content-between">
+            <div class="mt-3 form-check">
+              <input class="form-check-input" type="checkbox" value="" id="flexCheckDefault">
+              <label class="form-check-label" for="flexCheckDefault">
+                Use Custom Script
+              </label>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-outline-primary">Run Frida</button>
+            <!-- <button type="button" class="btn " style="background: #d14d61; color: white;">Stop Frida</button> -->
+            <button type="button" class="btn btn-outline-danger">Stop Frida</button>
+          </div>
+        </div>
+      </div>
+        <div class="col">
+          <div class="terminal-fsr">
+            <div class="head-terminal">
+              
+            
+              <div class="row  ">
+                <div class="col-5">
+                  <div class="d-flex flex-row  ">
+                    <div class="p-2 circle-red"></div>
+                    <div class="p-2 circle-yellow"></div>
+                    <div class="p-2 circle-green"></div>
+                  </div>
                 </div>
+
+                <div class="col-7 title-fsr">
+                  <span>FSR Logs</span>
+                </div>
+              </div>
+              
             </div>
+            <div class="cli">
+              <div class="cli-content">
+                <span class="text-success">~</span> hengker@root# rm -rf /
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+  
+              </div>
+            </div>
+          </div>
+          <div class="terminal-fsr mt-2">
+            <div class="head-terminal">
+              <div class="row  ">
+                <div class="col-5">
+                  <div class="d-flex flex-row  ">
+                    <div class="p-2 circle-red"></div>
+                    <div class="p-2 circle-yellow"></div>
+                    <div class="p-2 circle-green"></div>
+                  </div>
+                </div>
+
+                <div class="col-7 title-fsr">
+                  <span>Frida Logs</span>
+                </div>
+              </div>
+            </div>
+            <div class="cli">
+              <div class="cli-content">
+                <span class="text-success">~</span> hengker@root# rm -rf /
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Quia illo laborum rem quae aut aliquam sit placeat nobis, reprehenderit vel repellat dolorem pariatur, ipsam eligendi exercitationem quasi corrupti temporibus totam.</p>
+  
+              </div>
+            </div>
+          </div>
+          <!-- <div>asd</div> -->
         </div>
-            <div class="fsr-footer">
-                <center><p>&copy; <a href="https://github.com/z3n70">z3n70 - Secrash</a></p></center>
-            </div>
-        
+      </div>
+      <div class="footer">
+        <a class="credit" href="https://secrash.com" target="_blank"><span>2024 © Secrash</span></a>
+      </div>
     </div>
     <div class="wave"></div>
     <div class="wave"></div>
     <div class="wave"></div>
-    <script>
-            var socket = io.connect('http://' + document.domain + ':' + location.port);
-
-            var logOutput = document.getElementById('outputFrida');
-            var runButton = document.getElementById('runBtn');
-            var stopButton = document.getElementById('stopBtn');
-            runButton.disabled = false;
-            stopButton.disabled = true;
-
-            socket.on('output', function(data) {
-                var outputList = document.getElementById('output-list');
-                var listItem = document.createElement('li');
-                listItem.appendChild(document.createTextNode(`${data.data}`));
-                outputList.appendChild(listItem);
-            });
-
-        function toggleCustomScript() {
-            var customScriptCheckbox = document.getElementById("customScriptCheckbox");
-            var useCustomScriptInput = document.getElementById("useCustomScript");
-
-            if (customScriptCheckbox.checked) {
-                useCustomScriptInput.value = "1";
-            } else {
-                useCustomScriptInput.value = "0";
-            }
-        }
-
-        function filterOptions() {
-            var input, filter, select, option, i, txtValue;
-            input = document.getElementById("searchInput");
-            filter = input.value.toUpperCase();
-            select = document.getElementById("packageSelect");
-            options = select.getElementsByTagName("option");
-
-            for (i = 0; i < options.length; i++) {
-                txtValue = options[i].textContent || options[i].innerText;
-                if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                    options[i].style.display = "";
-                } else {
-                    options[i].style.display = "none";
-                }
-            }
-        }
-
-        function updateTextArea() {
-            var select = document.getElementById("selectedScript");
-            var scriptContentTextArea = document.getElementById("scriptContent");
-            var selectedScript = select.options[select.selectedIndex].value;
-
-            fetch(`/get-script-content?script=${selectedScript}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Script content not found');
-                    }
-                    return response.text();
-                })
-                .then(data => scriptContentTextArea.value = data)
-                .catch(error => {
-                    scriptContentTextArea.value = `Error loading script content: ${error.message}`;
-                    console.error(error);
-                });
-        }
-
-        stopButton.addEventListener('click', function(event){
-            event.preventDefault();
-            stopButton.disabled = true;
-            runButton.disabled = false;
-            logOutput.innerHTML = '<ul id="output-list"></ul>';
-            fetch('/stop-frida')
-                .then(response => response.text())
-                .then(data => {
-                    document.getElementById("outputContainer").innerHTML += `</br><span>Log:  ${data}</span>`;
-                })
-                .catch(error => console.error(error));
-
-        });
-        // function stopFrida() {
-        //     preventDefault();
-        //     stopButton.disabled = true;
-        //     runButton.disabled = false;
-        //     logOutput.innerHTML = '<ul id="output-list"></ul>';
-        //     fetch('/stop-frida')
-        //         .then(response => response.text())
-        //         .then(data => {
-        //             document.getElementById("outputContainer").innerHTML += '<div class="alert alert-info mt-4"><h2>Result:</h2><p>' + data + '</p></div>';
-        //         })
-        //         .catch(error => console.error(error));
-        // }
-
-        runButton.addEventListener('click', function(event) {
-                event.preventDefault();
-                runButton.disabled = true;
-                stopButton.disabled = false;
-                runFrida();
-            });
-
-        function runFrida(){
-
-            const form = document.querySelector('form');
-            const outputContainer = document.getElementById("outputContainer");
-            logOutput.innerHTML = '<ul id="output-list"></ul>';
-
-            const formData = new FormData(form);
-            fetch('/run-frida', {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => response.json())
-            .then(data => {
-                
-                const content = data.result || data.error || 'Unknown error occurred';
-                appendContent(content);
-            })
-            .catch(error => {
-                console.error(error);
-                appendContent(`</br><span>Error: ${error.message}</span`);
-            });
-
-        }
-        function appendContent(content) {
-            const outputContainer = document.getElementById("outputContainer");
-            outputContainer.innerHTML += `Log: ${content}`;
-            outputContainer.scrollTop = outputContainer.scrollHeight; 
-        }
-        runFrida();
-    </script>
-</body>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+  </body>
 </html>

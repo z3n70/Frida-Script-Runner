@@ -1,0 +1,214 @@
+body {
+  margin: auto;
+  font-family: Poppins;
+  overflow: auto;
+  background: linear-gradient(315deg, #7311a9 11%, #204ecf 33%, #343fa8 77%);
+  animation: gradient 15s ease infinite;
+  background-size: 400% 400%;
+  background-attachment: fixed;
+}
+
+.container1 {
+  margin: auto;
+  width: 85vw;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: none;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #555;
+
+  border-radius: 10px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+.wave {
+  background: rgb(255 255 255 / 25%);
+  border-radius: 1000% 1000% 0 0;
+  position: fixed;
+  width: 200%;
+  height: 25em;
+  animation: wave 10s -3s linear infinite;
+  transform: translate3d(0, 0, 0);
+  opacity: 0.8;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+}
+
+.wave:nth-of-type(2) {
+  bottom: -1.25em;
+  animation: wave 18s linear reverse infinite;
+  opacity: 0.8;
+}
+
+.wave:nth-of-type(3) {
+  bottom: -2.5em;
+  animation: wave 20s -1s reverse infinite;
+  opacity: 0.9;
+}
+
+@keyframes wave {
+  2% {
+    transform: translateX(1);
+  }
+
+  25% {
+    transform: translateX(-25%);
+  }
+
+  50% {
+    transform: translateX(-50%);
+  }
+
+  75% {
+    transform: translateX(-25%);
+  }
+
+  100% {
+    transform: translateX(1);
+  }
+}
+
+h2.white {
+  color: white;
+  font-size: 20.5px;
+  font-weight: bold;
+}
+
+div.bg {
+  background-color: rgba(255, 255, 255, 0.8);
+  height: 82vh;
+  width: "full";
+  border-radius: 10px;
+  padding: 30px;
+}
+
+.logo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.size-logo {
+  width: 200px;
+  height: auto;
+}
+
+.btn-outline-danger {
+  border: 1px solid #d14d61;
+  color: #d14d61;
+}
+
+.btn-outline-danger:hover {
+  background: #d14d61;
+  color: white;
+}
+
+.terminal-fsr {
+  background-color: rgba(35, 35, 35, 0.7);
+  height: 40.6vh;
+  width: "full";
+  border-radius: 10px;
+  font-family: Ubuntu Mono;
+}
+
+.head-terminal {
+  height: 35px;
+  border-radius: 10px 10px 0 0;
+  background: #e7ddd9;
+  padding: 10px;
+}
+
+.circle-red {
+  height: 15px;
+  width: 10px;
+  background: red;
+  border-radius: 50%;
+  box-shadow: 1px 1px 5px silver;
+}
+
+.circle-yellow {
+  height: 15px;
+  width: 15px;
+  background: orange;
+  border-radius: 50%;
+  margin-left: 10px;
+  box-shadow: 0px 0px 5px silver;
+}
+
+.circle-green {
+  height: 15px;
+  width: 15px;
+  background: green;
+  border-radius: 50%;
+  margin-left: 10px;
+  box-shadow: 1px 1px 5px silver;
+}
+
+.align-terminal {
+  display: flex;
+  align-items: center;
+  width: "full";
+}
+
+.title-fsr {
+  display: flex;
+  align-items: center;
+  width: "full";
+  margin-top: -5px;
+  font-size: large;
+  font-weight: 900;
+}
+
+.cli {
+  padding: 5px 10px;
+  color: white;
+}
+
+.cli-content {
+  height: 35vh;
+  overflow-y: scroll;
+  line-height: 16px;
+}
+
+.footer {
+  height: 5vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.credit {
+  text-decoration: none;
+  color: white;
+}
+
+.form-label {
+  font-weight: bold;
+}
