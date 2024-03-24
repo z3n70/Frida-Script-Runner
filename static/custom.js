@@ -3,12 +3,13 @@ var socket = io.connect("http://" + document.domain + ":" + location.port);
 var logOutput = document.getElementById("outputFrida");
 var runButton = document.getElementById("runBtn");
 var stopButton = document.getElementById("stopBtn");
+
 runButton.disabled = false;
 stopButton.disabled = true;
 
 socket.on("output", function (data) {
   var outputList = document.getElementById("output-list");
-  var listItem = document.createElement("li");
+  var listItem = document.createElement("span");
   listItem.appendChild(document.createTextNode(`${data.data}`));
   outputList.appendChild(listItem);
 });
@@ -18,9 +19,9 @@ function toggleCustomScript() {
   var useCustomScriptInput = document.getElementById("useCustomScript");
 
   if (customScriptCheckbox.checked) {
-    useCustomScriptInput.value = "1";
+    customScriptCheckbox.value = "1";
   } else {
-    useCustomScriptInput.value = "0";
+    customScriptCheckbox.value = "0";
   }
 }
 
@@ -40,6 +41,12 @@ function filterOptions() {
     }
   }
 }
+
+
+var bypassScript = document.getElementById("selectedScript");
+bypassScript.addEventListener('change', function(){
+    updateTextArea();
+});
 
 function updateTextArea() {
   var select = document.getElementById("selectedScript");
@@ -64,13 +71,13 @@ stopButton.addEventListener("click", function (event) {
   event.preventDefault();
   stopButton.disabled = true;
   runButton.disabled = false;
-  logOutput.innerHTML = '<ul id="output-list"></ul>';
+  logOutput.innerHTML = '</br><span class="text-success">~</span><span id="output-list"></span>';
   fetch("/stop-frida")
     .then((response) => response.text())
     .then((data) => {
       document.getElementById(
         "outputContainer"
-      ).innerHTML += `</br><span>Log:  ${data}</span>`;
+      ).innerHTML += `</br><span class="text-success">~</span><span> ${data}</span>`;
     })
     .catch((error) => console.error(error));
 });
@@ -97,7 +104,7 @@ runButton.addEventListener("click", function (event) {
 function runFrida() {
   const form = document.querySelector("form");
   const outputContainer = document.getElementById("outputContainer");
-  logOutput.innerHTML = '<ul id="output-list"></ul>';
+  logOutput.innerHTML = '</br><span class="text-success">~</span><span id="output-list"></span>';
 
   const formData = new FormData(form);
   fetch("/run-frida", {
@@ -111,12 +118,12 @@ function runFrida() {
     })
     .catch((error) => {
       console.error(error);
-      appendContent(`</br><span>Error: ${error.message}</span`);
+      appendContent(`</br><span class="text-success">~</span><span>Error: ${error.message}</span`);
     });
 }
 function appendContent(content) {
   const outputContainer = document.getElementById("outputContainer");
-  outputContainer.innerHTML += `Log: ${content}`;
+  outputContainer.innerHTML += `<span class="text-success">~</span> ${content}`;
   outputContainer.scrollTop = outputContainer.scrollHeight;
 }
-runFrida();
+// runFrida();
