@@ -35,8 +35,8 @@ def get_device_type():
 # adb status and connect
 def run_adb_command(command, timeout=5):
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout, shell=True)
-        return result.stdout.strip()
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+        return result.stdout
     except subprocess.CalledProcessError as e:
         return f"Error: ADB command failed. {e}"
     
@@ -44,7 +44,7 @@ def run_adb_command(command, timeout=5):
 def run_ideviceinfo(timeout=5):
     try:
         result = subprocess.run(["ideviceinfo"], capture_output=True, text=True, check=True, timeout=timeout)
-        return result.stdout.strip()
+        return result.stdout
     except subprocess.TimeoutExpired:
         return "Error: ideviceinfo command timed out."
     
@@ -186,7 +186,8 @@ def run_frida_with_socketio(script_path, package):
             if output == "" and process.poll() is not None:
                 break
             if output:
-                socketio.emit("output", {"data": output.strip()})
+                socketio.emit("output", {"data": output})
+                # print(output.split())
                 time.sleep(0.010)
 
         socketio.emit("output", {"data": "Frida process finished."})
