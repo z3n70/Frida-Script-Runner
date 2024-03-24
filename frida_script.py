@@ -72,7 +72,7 @@ def get_package_identifiers():
     try:
         result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
         lines = result.stdout.strip().split('\n')[1:]
-        identifiers = [line.split()[-1] for line in lines]
+        identifiers = [line.split()[-1] + " - " + line.split()[1]  for line in lines]
         return identifiers
     except Exception as e:
         print(f"Error getting package identifiers: {e}")
@@ -192,6 +192,8 @@ def stop_frida():
         return 'Frida process is not running', 200
 
 if __name__ == '__main__':
+    
+
     try:
         print("""\
 
