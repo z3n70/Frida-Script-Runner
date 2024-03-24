@@ -1,10 +1,11 @@
 
 # Frida Script Runner
+
+![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
+
 Frida Script Runner v1.2 is a versatile web-based tool designed for Android and iOS penetration testing purposes.
 
 This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask, a Python framework, to enhance the efficiency of penetration testing tasks.
-
-![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
 
 ## Features
 
@@ -40,7 +41,7 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
 2. Install Dependencies:
 
    ```bash
-   pip install -r requeirements.txt
+   pip3 install -r requeirements.txt
 
 3. Run The Application
 
@@ -67,7 +68,7 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
 Contributions are welcome! Please contact me 
 
 ### Thanks and Support
-[Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham), 
+[Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham) 
 
 # Acknowledgments
 Special thanks to the [Frida](https://frida.re/) project for providing an exceptional instrumentation toolkit.
