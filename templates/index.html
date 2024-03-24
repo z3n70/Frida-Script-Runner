@@ -37,8 +37,8 @@
         <div class="col bg">
           <form action="/run-frida">
           <label for="select-device-options" class="form-label">Your Devices</label>
-          <p>{{ connected_device }}</p>
-          <div class=" mb-3">
+          <p>Device: {{ connected_device.model }}</br>UDID: {{ connected_device.UDID }}</p>
+          <!-- <div class=" mb-3">
             <div class="form-check form-check-inline">
               <input name="select-device-options" class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio1" value="android">
               <label class="form-check-label" for="inlineRadio1">Android</label>
@@ -47,7 +47,7 @@
               <input name="select-device-options" class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio2" value="ios">
               <label class="form-check-label" for="inlineRadio2">iOS</label>
             </div>
-          </div>
+          </div> -->
           <div class="mb-3">
             <label for="search-packages" class="form-label">Select Package</label>
             <input name="search-packages" type="text" class="form-control" id="searchInput" oninput="filterOptions()" placeholder="Search for package . . .">
