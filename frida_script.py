@@ -63,7 +63,7 @@ def there_is_adb_and_devices(running_device_type):
                 for device_id in device_ids:
                     model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
                     serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
-                    available_devices.append({"model": model, "serial_number": serial_number})
+                    available_devices.append({"model": model, "UDID": serial_number})
                 adb_is_active = True
                 message = "Device is available"
         except Exception as e:
@@ -81,7 +81,7 @@ def there_is_adb_and_devices(running_device_type):
         except Exception as e:
             message = f"Error checking iOS device connectivity: {e}"
 
-    return {"is_true": adb_is_active, "available_devices": available_devices, "message": message}
+    return {"is_true": adb_is_active, "available_devices": available_devices[0], "message": message}
 
 def get_package_identifiers():
     try:
