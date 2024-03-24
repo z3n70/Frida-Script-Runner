@@ -55,7 +55,7 @@
           <select name="package" id="packageSelect" class="form-control mt-2" required>
             {% if identifiers %}
             {% for identifier in identifiers %}
-            <option value="{{ identifier }}">{{ identifier }}</option>
+            <option value="{{ identifier.split()[2] }}">{{ identifier }}</option>
             {% endfor %}
             {% else %}
             <option disabled>No packages detected. Connect your USB device and run Frida.</option>
