@@ -70,6 +70,9 @@ stopButton.addEventListener("click", function (event) {
   event.preventDefault();
   stopButton.disabled = true;
   runButton.disabled = false;
+  var clearOutput = document.getElementById("clearOutput")
+  clearOutput.innerHTML = ""
+  clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`
   logOutput.innerHTML =
     '</br><span class="text-success">~</span><pre class="wraptext" id="output-list"></pre>';
   fetch("/stop-frida")
@@ -95,6 +98,8 @@ stopButton.addEventListener("click", function (event) {
 // }
 
 runButton.addEventListener("click", function (event) {
+  var clearOutput = document.getElementById("clearOutput")
+  clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`
   event.preventDefault();
   runButton.disabled = true;
   stopButton.disabled = false;

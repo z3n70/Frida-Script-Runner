@@ -9,6 +9,7 @@ import threading
 import time
 import signal
 import logging
+import re
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -73,6 +74,9 @@ def there_is_adb_and_devices(running_device_type):
             ideviceinfo_output = run_ideviceinfo()
             if ideviceinfo_output:
                 adb_is_active = True
+                deviceId = re.search(r'UniqueDeviceID:\ ([a-zA-Z0-9]+)', ideviceinfo_output).group(1)
+                model = re.search(r'ProductType:\ ([\w\d,]+)', ideviceinfo_output).group(1)
+                available_devices.append({"model":model, "UDID": deviceId})
                 message = "iOS device is available"
         except Exception as e:
             message = f"Error checking iOS device connectivity: {e}"
