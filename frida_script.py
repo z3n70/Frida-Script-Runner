@@ -143,7 +143,10 @@ def run_frida():
 
     try:
         package = request.form['package']
-        use_custom_script = int(request.form['use_custom_script']) == 1
+        if not 'use_custom_script' in request.form.keys():
+            use_custom_script = False
+        else:
+                use_custom_script = int(request.form['use_custom_script']) == 1
         selected_script = request.form['selected_script']
         script_content = request.form['script_content']
 
