@@ -5,7 +5,7 @@ Frida Script Runner is a versatile web-based tool designed for Android and iOS p
 
 This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask, a Python framework, to enhance the efficiency of penetration testing tasks.
 
-![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
+![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
 
 ## Features
 
