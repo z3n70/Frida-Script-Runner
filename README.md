@@ -1,7 +1,6 @@
-#this is branch staging
 
 # Frida Script Runner
-Frida Script Runner is a versatile web-based tool designed for Android and iOS penetration testing purposes.
+Frida Script Runner v1.2 is a versatile web-based tool designed for Android and iOS penetration testing purposes.
 
 This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask, a Python framework, to enhance the efficiency of penetration testing tasks.
 
@@ -15,6 +14,7 @@ This tool simplifies the process of interacting with Frida, providing a user-fri
 - **Custom Scripting:** Easily create and run custom Frida scripts by copy-pasting the script code directly into the tool.
 
 ## Feature Details
+![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/static/image.png)
 
 ### How to Use
 https://github.com/z3n70/Frida-Script-Runner/assets/39817707/8ef5b44c-4052-4a6b-8a94-0a9a03255402
