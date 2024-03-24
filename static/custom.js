@@ -77,7 +77,7 @@ stopButton.addEventListener("click", function (event) {
     .then((data) => {
       document.getElementById(
         "outputContainer"
-      ).innerHTML += `</br><pre class="wraptext" id="output-list"> ${data}</pre>`;
+      ).innerHTML += `</br><pre class="wraptext"> ${data}</pre>`;
     })
     .catch((error) => console.error(error));
 });
@@ -104,7 +104,7 @@ runButton.addEventListener("click", function (event) {
 function runFrida() {
   const form = document.querySelector("form");
   const outputContainer = document.getElementById("outputContainer");
-  logOutput.innerHTML = '</br><pre class="wraptext" id="output-list"></pre>';
+  logOutput.innerHTML = '</br><pre class="wraptext"></pre>';
 
   const formData = new FormData(form);
   fetch("/run-frida", {

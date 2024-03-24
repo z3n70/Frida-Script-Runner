@@ -131,7 +131,7 @@ def index():
         try:
             identifiers = get_package_identifiers()
             bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
-            return render_template('index.html', identifiers=identifiers, bypass_scripts_android=bypass_scripts_1, bypass_scripts_ios=bypass_scripts_2,devices=adb_check)
+            return render_template('index.html', identifiers=identifiers, bypass_scripts_android=bypass_scripts_1, bypass_scripts_ios=bypass_scripts_2,devices=adb_check,connected_device=adb_check["available_devices"])
         except Exception as e:
             return render_template('index.html', error=f"Error: {e}")
     else:
