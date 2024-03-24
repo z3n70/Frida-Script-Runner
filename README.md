@@ -67,7 +67,7 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
 Contributions are welcome! Please contact me 
 
 ### Thanks and Support
-[Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Koped](https://github.com/secrash), 
+[Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham), 
 
 # Acknowledgments
 Special thanks to the [Frida](https://frida.re/) project for providing an exceptional instrumentation toolkit.
