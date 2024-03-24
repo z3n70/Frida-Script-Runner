@@ -9,7 +9,7 @@ stopButton.disabled = true;
 
 socket.on("output", function (data) {
   var outputList = document.getElementById("output-list");
-  var listItem = document.createElement("span");
+  var listItem = document.createElement("pre");
   listItem.appendChild(document.createTextNode(`${data.data}`));
   outputList.appendChild(listItem);
 });
@@ -42,10 +42,9 @@ function filterOptions() {
   }
 }
 
-
 var bypassScript = document.getElementById("selectedScript");
-bypassScript.addEventListener('change', function(){
-    updateTextArea();
+bypassScript.addEventListener("change", function () {
+  updateTextArea();
 });
 
 function updateTextArea() {
@@ -71,13 +70,14 @@ stopButton.addEventListener("click", function (event) {
   event.preventDefault();
   stopButton.disabled = true;
   runButton.disabled = false;
-  logOutput.innerHTML = '</br><span class="text-success">~</span><span id="output-list"></span>';
+  logOutput.innerHTML =
+    '</br><span class="text-success">~</span><pre class="wraptext" id="output-list"></pre>';
   fetch("/stop-frida")
     .then((response) => response.text())
     .then((data) => {
       document.getElementById(
         "outputContainer"
-      ).innerHTML += `</br><span class="text-success">~</span><span> ${data}</span>`;
+      ).innerHTML += `</br><pre class="wraptext" id="output-list"> ${data}</pre>`;
     })
     .catch((error) => console.error(error));
 });
@@ -104,7 +104,7 @@ runButton.addEventListener("click", function (event) {
 function runFrida() {
   const form = document.querySelector("form");
   const outputContainer = document.getElementById("outputContainer");
-  logOutput.innerHTML = '</br><span class="text-success">~</span><span id="output-list"></span>';
+  logOutput.innerHTML = '</br><pre class="wraptext" id="output-list"></pre>';
 
   const formData = new FormData(form);
   fetch("/run-frida", {
@@ -118,12 +118,14 @@ function runFrida() {
     })
     .catch((error) => {
       console.error(error);
-      appendContent(`</br><span class="text-success">~</span><span>Error: ${error.message}</span`);
+      appendContent(
+        `</br><span class="text-success">~</span><pre class="wraptext">Error: ${error.message}</pre>`
+      );
     });
 }
 function appendContent(content) {
   const outputContainer = document.getElementById("outputContainer");
-  outputContainer.innerHTML += `<span class="text-success">~</span> ${content}`;
+  outputContainer.innerHTML += `<span class="text-success">~</span> ${content} </br>`;
   outputContainer.scrollTop = outputContainer.scrollHeight;
 }
 // runFrida();

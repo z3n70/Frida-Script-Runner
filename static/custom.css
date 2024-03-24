@@ -108,6 +108,10 @@ div.bg {
   padding: 30px;
 }
 
+div {
+  overflow-wrap: break-word;
+}
+
 .logo {
   display: flex;
   flex-direction: column;
@@ -193,8 +197,17 @@ div.bg {
 
 .cli-content {
   height: 33vh;
+  width: 40vw;
+  max-width: 40vw;
   overflow-y: scroll;
-  line-height: 16px;
+}
+
+.cli-content-terminal {
+  height: 33vh;
+  width: 40vw;
+  max-width: 40vw;
+  overflow-y: scroll;
+  overflow-wrap: break-word;
 }
 
 .footer {
@@ -211,4 +224,16 @@ div.bg {
 
 .form-label {
   font-weight: bold;
+}
+
+pre {
+  margin: 0;
+  line-height: 16px;
+  font-family: Ubuntu Mono;
+  font-size: medium;
+  overflow-wrap: break-word;
+}
+
+.wraptext {
+  overflow-wrap: break-word;
 }
