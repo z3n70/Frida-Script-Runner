@@ -100,12 +100,16 @@ h2.white {
   font-weight: bold;
 }
 
-.bg {
+div.bg {
   background-color: rgba(255, 255, 255, 0.8);
   height: 80vh;
   width: "full";
   border-radius: 10px;
   padding: 30px;
+}
+
+div {
+  overflow-wrap: break-word;
 }
 
 .logo {
@@ -120,11 +124,6 @@ h2.white {
   height: auto;
 }
 
-.custom-btn {
-  display: flex;
-  justify-content: space-between;
-}
-
 .btn-outline-danger {
   border: 1px solid #d14d61;
   color: #d14d61;
@@ -137,15 +136,7 @@ h2.white {
 
 .terminal-fsr {
   background-color: rgba(35, 35, 35, 0.7);
-  height: 35vh;
-  width: "full";
-  border-radius: 10px;
-  font-family: Ubuntu Mono;
-}
-
-.terminal-frida {
-  background-color: rgba(35, 35, 35, 0.7);
-  height: 44vh;
+  height: 39.55vh;
   width: "full";
   border-radius: 10px;
   font-family: Ubuntu Mono;
@@ -205,17 +196,16 @@ h2.white {
 }
 
 .cli-content {
-  height: 29vh;
-  width: 99%;
-  max-width: 99%;
+  height: 33vh;
+  width: 40vw;
+  max-width: 40vw;
   overflow-y: scroll;
-  overflow-wrap: break-word;
 }
 
-.cli-content-frida {
-  height: 38vh;
-  width: 99%;
-  max-width: 99%;
+.cli-content-terminal {
+  height: 33vh;
+  width: 40vw;
+  max-width: 40vw;
   overflow-y: scroll;
   overflow-wrap: break-word;
 }
