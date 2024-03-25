@@ -100,16 +100,12 @@ h2.white {
   font-weight: bold;
 }
 
-div.bg {
+.bg {
   background-color: rgba(255, 255, 255, 0.8);
   height: 80vh;
   width: "full";
   border-radius: 10px;
   padding: 30px;
-}
-
-div {
-  overflow-wrap: break-word;
 }
 
 .logo {
@@ -124,6 +120,11 @@ div {
   height: auto;
 }
 
+.custom-btn {
+  display: flex;
+  justify-content: space-between;
+}
+
 .btn-outline-danger {
   border: 1px solid #d14d61;
   color: #d14d61;
@@ -136,7 +137,15 @@ div {
 
 .terminal-fsr {
   background-color: rgba(35, 35, 35, 0.7);
-  height: 39.55vh;
+  height: 35vh;
+  width: "full";
+  border-radius: 10px;
+  font-family: Ubuntu Mono;
+}
+
+.terminal-frida {
+  background-color: rgba(35, 35, 35, 0.7);
+  height: 44vh;
   width: "full";
   border-radius: 10px;
   font-family: Ubuntu Mono;
@@ -196,16 +205,17 @@ div {
 }
 
 .cli-content {
-  height: 33vh;
-  width: 40vw;
-  max-width: 40vw;
+  height: 29vh;
+  width: 99%;
+  max-width: 99%;
   overflow-y: scroll;
+  overflow-wrap: break-word;
 }
 
-.cli-content-terminal {
-  height: 33vh;
-  width: 40vw;
-  max-width: 40vw;
+.cli-content-frida {
+  height: 38vh;
+  width: 99%;
+  max-width: 99%;
   overflow-y: scroll;
   overflow-wrap: break-word;
 }
@@ -232,12 +242,12 @@ pre {
   line-height: 16px;
   font-family: Ubuntu Mono;
   font-size: medium;
-  white-space: pre-wrap;       /* Since CSS 2.1 */
-  white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
-  white-space: -pre-wrap;      /* Opera 4-6 */
-  white-space: -o-pre-wrap;    /* Opera 7 */
-  word-wrap: break-word;       /* Internet Explorer 5.5+ */
-/*  overflow-wrap: break-word;*/
+  white-space: pre-wrap; /* Since CSS 2.1 */
+  white-space: -moz-pre-wrap; /* Mozilla, since 1999 */
+  white-space: -pre-wrap; /* Opera 4-6 */
+  white-space: -o-pre-wrap; /* Opera 7 */
+  word-wrap: break-word; /* Internet Explorer 5.5+ */
+  /*  overflow-wrap: break-word;*/
 }
 
 .wraptext {
