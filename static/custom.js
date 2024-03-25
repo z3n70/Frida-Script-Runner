@@ -133,4 +133,13 @@ function appendContent(content) {
   outputContainer.innerHTML += `<span class="text-success">~</span> ${content} </br>`;
   outputContainer.scrollTop = outputContainer.scrollHeight;
 }
+
+
+function multipleScript(){
+  // console.log("test multi script")
+  const elementScripts = document.getElementById("selectedScript")
+  console.log(elementScripts)
+  document.getElementById("chooseScript").innerHTML += elementScripts.outerHTML
+}
+
 // runFrida();

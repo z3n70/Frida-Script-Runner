@@ -157,7 +157,7 @@ def run_frida():
         else:
                 use_custom_script = int(request.form['use_custom_script']) == 1
 
-        selected_script = request.form['selected_script']
+        selected_script = request.form.getlist('selected_script[]')
         script_content = request.form['script_content']
 
         if use_custom_script:
@@ -167,8 +167,11 @@ def run_frida():
             with open(script_path, 'w') as file:
                 file.write(script_content)
         else:
-            script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
-
+            script_path = []
+            for multiple_scripts in selected_script:
+                script_path.append("" + os.path.join(SCRIPTS_DIRECTORY, multiple_scripts))
+        # print(' '.join(script_path))
+        # os._exit(1)
         if process and process.poll() is None:
             process.terminate()
 
@@ -188,7 +191,9 @@ def run_frida_with_socketio(script_path, package):
     global process
 
     try:
-        command = ["frida", "-l", script_path, "-U", "-f", package]
+        script_string = " -l ".join(script_path)
+        print(script_string)
+        command = "frida -l " + script_string + " -U -f" + package
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
 
         while True:
