@@ -36,8 +36,14 @@
       <div class="row">
         <div class="col bg">
           <form action="/run-frida">
-          <label for="select-device-options" class="form-label">Your Devices</label>
-          <p>Device: {{ connected_device.model }}</br>UDID: {{ connected_device.UDID }}</p>
+            <label for="select-device-options" class="form-label">Your Devices</label>
+            {% if connected_device %}
+                {% for device in connected_device %}
+                    <p>Device: {{ device.model }}</br>UDID: {{ device.UDID }}</p>
+                {% endfor %}
+            {% else %}
+                <p>No device connected</p>
+            {% endif %}
           <!-- <div class=" mb-3">
             <div class="form-check form-check-inline">
               <input name="select-device-options" class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio1" value="android">
