@@ -22,6 +22,30 @@ if "tmp" not in os.listdir("."):
 class OsNotSupportedError(Exception):
     pass
 
+# check for IOS or Andorid device
+def get_mobile_type():
+    device = []
+    valid = False
+    list_devices = subprocess.run(["frida-ls-devices"], capture_output=True, text=True, check=True).stdout.split("\n")
+    for line in list_devices:
+        if "usb" in line:
+            part = line.split()
+            os_type = part[4]
+            name = " ".join(part[2:4])
+            device.append({"os":os_type,"name":name})
+
+    if device:
+        if len(device) > 1:
+            message = "Multiple device detected. Please use only one device instead."
+        else:
+            message = "Device detected"
+            valid = True
+    else:
+        message = "No device are connected. Please connect one device then run the program again."
+
+    return {"device":device, "message":message,"valid":valid}
+
+
 def get_device_type():
     if os.name == 'nt':
         return "Windows"
@@ -81,7 +105,10 @@ def there_is_adb_and_devices(running_device_type):
         except Exception as e:
             message = f"Error checking iOS device connectivity: {e}"
 
-    return {"is_true": adb_is_active, "available_devices": available_devices[0], "message": message}
+    mobile_os = get_mobile_type()["device"][0]["os"]
+    available_devices = available_devices[0]
+    available_devices.update({"mobile_os":mobile_os})
+    return {"is_true": adb_is_active, "available_devices": available_devices,"message": message}
 
 def get_package_identifiers():
     try:
@@ -218,22 +245,23 @@ def stop_frida():
 
 if __name__ == '__main__':
     try:
-        print("""\
+        device = get_mobile_type()
+        if device["valid"]:
+            print("""\
 
 ────██──────▀▀▀██
 ──▄▀█▄▄▄─────▄▀█▄▄▄
 ▄▀──█▄▄──────█─█▄▄
 ─▄▄▄▀──▀▄───▄▄▄▀──▀▄
 ─▀───────▀▀─▀───────▀▀
-       FSR v1.1
-                    """)
-        print("Please Access http://127.0.0.1:5000\n")
+           FSR v1.1
+                        """)
+            print("Please Access http://127.0.0.1:5000\n")
 
-        print("Press CTRL+C to stop this program.")
-        socketio.run(app, debug=True if get_device_type() not in ['Windows','Linux'] else False)
-        # socketio.run(app, debug=True )
-        # print(there_is_adb_and_devices(get_device_type()))
-        # app.run(debug=True)
+            print("Press CTRL+C to stop this program.")
+            socketio.run(app, debug=True if get_device_type() not in ['Windows','Linux'] else False)
+        else:
+            print(device["device"])
+            print(device["message"])
     except KeyboardInterrupt:
         print("\nThanks For Using This Tools ♡")
-    # print(get_package_identifiers())

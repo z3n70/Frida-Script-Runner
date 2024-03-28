@@ -39,8 +39,9 @@
                 >Your Devices</label
               >
               <p>
-                Device: {{ connected_device.model }}<br />UDID: {{
-                connected_device.UDID }}
+                Mobile OS: {{ connected_device.mobile_os }}<br />
+                Device: {{ connected_device.model }}<br />
+                UDID: {{connected_device.UDID }}
               </p>
               <!-- <div class=" mb-3">
             <div class="form-check form-check-inline">
@@ -91,6 +92,7 @@
                   class="form-select"
                   aria-label="Default select example"
                 >
+                {% if connected_device.mobile_os == 'Android' %}
                   <optgroup
                     label="Your Android Script"
                     data-directory="Script Directory 1"
@@ -101,6 +103,7 @@
                     </option>
                     {% endfor %}
                   </optgroup>
+                {% else %}
                   <optgroup
                     label="Your iOS Script"
                     data-directory="Script Directory 2"
@@ -111,6 +114,7 @@
                     </option>
                     {% endfor %}
                   </optgroup>
+                {% endif %}
                 </select>
               </div>
               <div class="mt-3">
