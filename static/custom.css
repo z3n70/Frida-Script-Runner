@@ -250,6 +250,19 @@ pre {
   /*  overflow-wrap: break-word;*/
 }
 
-.wraptext {
-  overflow-wrap: break-word;
+textarea.CodeMirror {
+  height: 250px; /* Set initial height */
+  font-size: 15px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  padding: 10px;
+}
+
+.android {
+  color: #7bba3a;
+  font-size: 20px;
+}
+
+.ios {
+  font-size: 20px;
 }
