@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO
+from colorama import Fore, Back, Style, init
 import subprocess
 import os
 import json
@@ -75,7 +76,12 @@ def there_is_adb_and_devices():
             ideviceinfo_output = run_ideviceinfo()
             if ideviceinfo_output:
                 adb_is_active = True
-                message = "iOS device is available"
+
+                deviceId = re.search(r'UniqueDeviceID:\s*([a-zA-Z0-9]+)', ideviceinfo_output)
+                model = re.search(r'ProductType:\s*([\w\d,]+)', ideviceinfo_output)
+                if deviceId and model:
+                    available_devices.append({"model": model.group(1).strip(),  "UDID": deviceId.group(1).strip()})
+                    message = "iOS device is available"
         except Exception as e:
             message = f"Error checking iOS device connectivity: {e}"
 
@@ -218,20 +224,31 @@ def stop_frida():
 
 if __name__ == '__main__':
     try:
-        print("""\
-
-────██──────▀▀▀██
-──▄▀█▄▄▄─────▄▀█▄▄▄
-▄▀──█▄▄──────█─█▄▄
-─▄▄▄▀──▀▄───▄▄▄▀──▀▄
-─▀───────▀▀─▀───────▀▀
-       FSR v1.1
-                    """)
+        print(Fore.GREEN + """
+                           ‸
+                          _)\.-.
+         .-.__,___,_.-=-. )\`  ͡⇼`\_
+     .-.__\__,__,__.-=-. `/  \     `\\
+     {~,-~-,-~.-~,-,;;;;\ |   '--;`)/
+      \-,~_-~_-,~-,(_(_(;\/   ,;/
+       ",-.~_,-~,-~,)_)_)'.  ;;(
+         `~-,_-~,-~(_(_(_(_\  `;\\ 
+   ,          `"~~--,)_)_)_)\_   \\
+   |\              (_(_/_(_,   \  ;  
+   \ '-.       _.--'  /_/_/_)   | |  FSR v1.3       
+    '--.\    .'          /_/    | |
+        ))  /       \      |   /.'
+       //  /,        | __.'|  ||
+      //   ||        /`    (  ||
+     ||    ||      .'       \ \\
+     ||    ||    .'_         \ \\
+      \\   //   / _ `\         \ \\__
+       \\'-'/(   _  `\,;        \ '--:,
+        `"`  `"` `-,,;         `"`",,;
+           
+        """)
         print("Please Access http://127.0.0.1:5000\n")
-
         print("Press CTRL+C to stop this program.")
         socketio.run(app, debug=False)
     except KeyboardInterrupt:
         print("\nThanks For Using This Tools ♡")
-        
-

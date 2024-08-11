@@ -1,2 +1,3 @@
 flask
 flask_socketio
+colorama
