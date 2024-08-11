@@ -105,6 +105,20 @@
 		 "description":"SSL Pinning"
 		 }
 	},
+	{"disable-flutter-tls.js": 
+		{"category":"ANDROID",
+		"group":"SSL",
+		"file_name":"disable-flutter-tls.js",
+		"description":"SSL Pinning"
+		}
+	},
+	{"disable-flutter-tls2.js": 
+		{"category":"ANDROID",
+		"group":"SSL",
+		"file_name":"disable-flutter-tls2.js",
+		"description":"SSL Pinning"
+		}
+	},
 	{"rootber.js" : {"category":"ANDROID",
 				"group" : "ROOT",
 				"file_name":"rootber.js",
@@ -294,6 +308,20 @@
 				"group" : "SSL",
 				"file_name":"instagram-facebook-ssl.js",
 				"description":"SSL Pinning Instagram-Facebook"}
+	},
+	{"disable-flutter-tls.js": 
+		{"category":"IOS",
+		"group":"SSL",
+		"file_name":"disable-flutter-tls.js",
+		"description":"SSL Pinning"
+		}
+	},
+	{"disable-flutter-tls2.js": 
+		{"category":"IOS",
+		"group":"SSL",
+		"file_name":"disable-flutter-tls2.js",
+		"description":"SSL Pinning"
+		}
 	},
 	{"touchid-and-jb.js" : 
 				{"category":"IOS",
