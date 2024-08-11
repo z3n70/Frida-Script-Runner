@@ -39,7 +39,7 @@
             <label for="select-device-options" class="form-label">Your Devices</label>
             {% if connected_device %}
                 {% for device in connected_device %}
-                    <p>Device: {{ device.model }}</br>UDID: {{ device.UDID }}</p>
+                    <p>Device: {{ device.model }}</p>
                 {% endfor %}
             {% else %}
                 <p>No device connected</p>

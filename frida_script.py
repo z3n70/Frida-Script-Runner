@@ -22,16 +22,16 @@ if "tmp" not in os.listdir("."):
 class OsNotSupportedError(Exception):
     pass
   
-def get_device_type():
-    if os.name == 'nt':
-        return "Windows"
-    elif os.name == 'posix':
-        if os.uname().sysname == 'Darwin':
-            return "macOS"
-        else:
-            return "Linux"
-    else:
-        return "Unknown"
+# def get_device_type():
+#     if os.name == 'nt':
+#         return "Windows"
+#     elif os.name == 'posix':
+#         if os.uname().sysname == 'Darwin':
+#             return "macOS"
+#         else:
+#             return "Linux"
+#     else:
+#         return "Unknown"
       
 # adb status and connect
 def run_adb_command(command, timeout=5):
@@ -50,58 +50,51 @@ def run_ideviceinfo(timeout=5):
     except subprocess.TimeoutExpired:
         return "Error: ideviceinfo command timed out."
     
-def there_is_adb_and_devices(running_device_type):
+def there_is_adb_and_devices():
     adb_is_active = False
     available_devices = []
     message = ""
-    if running_device_type in ["Windows","Linux"]:
-        try:
-            result = run_adb_command(["adb", "devices"])
-            connected_devices = result.strip().split('\n')[1:]
-            device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
 
-            if device_ids:
-                for device_id in device_ids:
-                    model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
-                    serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
-                    available_devices.append({"model": model, "UDID": serial_number})
-                adb_is_active = True
-                message = "Device is available"
-        except Exception as e:
-            message = f"Error checking Android device connectivity: {e}"
+    try:
+        result = run_adb_command(["adb", "devices"])
+        connected_devices = result.strip().split('\n')[1:]
+        device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
 
+        if device_ids:
+            for device_id in device_ids:
+                model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
+                serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
+                available_devices.append({"model": model, "serial_number": serial_number})
+            adb_is_active = True
+            message = "Device is available"
+    except Exception as e:
+        message = f"Error checking Android device connectivity: {e}"
     else:
         # for ios use ideviceinfo
         try:
             ideviceinfo_output = run_ideviceinfo()
             if ideviceinfo_output:
                 adb_is_active = True
-
-                deviceId = re.search(r'UniqueDeviceID:\s*([a-zA-Z0-9]+)', ideviceinfo_output)
-                model = re.search(r'ProductType:\s*([\w\d,]+)', ideviceinfo_output)
-                if deviceId and model:
-                    available_devices.append({"model": model.group(1).strip(), "UDID": deviceId.group(1).strip()})
-                    message = "iOS device is available"
+                message = "iOS device is available"
         except Exception as e:
             message = f"Error checking iOS device connectivity: {e}"
 
     return {"is_true": adb_is_active, "available_devices": available_devices, "message": message}
 
-
 def get_package_identifiers():
-    try:
-        if get_device_type() in ["Windows","Linux"]:
-            process = subprocess.Popen(['frida-ps', '-Uai'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            result, _ = process.communicate()
-            lines = result.strip().split('\n')[1:]
-        else:
+        try:
+        # if get_device_type() in ["Windows","Linux"]:
+        #     process = subprocess.Popen(['frida-ps', '-Uai'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        #     result, _ = process.communicate()
+        #     lines = result.strip().split('\n')[1:]
+        # else:
             result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
             lines = result.stdout.strip().split('\n')[1:]
-        identifiers = [line.split()[1] + " - " + line.split()[-1]  for line in lines]
-        return identifiers
-    except Exception as e:
-        print(f"Error getting package identifiers: {e}")
-        return []
+            identifiers = [line.split()[1] + " - " + line.split()[-1]  for line in lines]
+            return identifiers
+        except Exception as e:
+            print(f"Error getting package identifiers: {e}")
+            return []
 
 def get_bypass_scripts():
     list_script = json.load(open("script.json","r"))["scripts"]
@@ -134,8 +127,8 @@ def get_script_content_route():
 
 @app.route('/')
 def index():
-    device_type = get_device_type()
-    adb_check = there_is_adb_and_devices(device_type)
+    # device_type = get_device_type()
+    adb_check = there_is_adb_and_devices()
     if adb_check["is_true"]:
         try:
             identifiers = get_package_identifiers()
@@ -237,7 +230,7 @@ if __name__ == '__main__':
         print("Please Access http://127.0.0.1:5000\n")
 
         print("Press CTRL+C to stop this program.")
-        socketio.run(app, debug=True if get_device_type() not in ['Windows','Linux'] else False)
+        socketio.run(app, debug=False)
     except KeyboardInterrupt:
         print("\nThanks For Using This Tools ♡")
         
