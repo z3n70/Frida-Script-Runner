@@ -23,16 +23,16 @@ if "tmp" not in os.listdir("."):
 class OsNotSupportedError(Exception):
     pass
   
-# def get_device_type():
-#     if os.name == 'nt':
-#         return "Windows"
-#     elif os.name == 'posix':
-#         if os.uname().sysname == 'Darwin':
-#             return "macOS"
-#         else:
-#             return "Linux"
-#     else:
-#         return "Unknown"
+def get_device_type():
+    if os.name == 'nt':
+        return "Windows"
+    elif os.name == 'posix':
+        if os.uname().sysname == 'Darwin':
+            return "macOS"
+        else:
+            return "Linux"
+    else:
+        return "Unknown"
       
 # adb status and connect
 def run_adb_command(command, timeout=5):
@@ -133,7 +133,7 @@ def get_script_content_route():
 
 @app.route('/')
 def index():
-    # device_type = get_device_type()
+    device_type = get_device_type()
     adb_check = there_is_adb_and_devices()
     if adb_check["is_true"]:
         try:
@@ -249,6 +249,8 @@ if __name__ == '__main__':
         """)
         print("Please Access http://127.0.0.1:5000\n")
         print("Press CTRL+C to stop this program.")
-        socketio.run(app, debug=False)
+        socketio.run(app, debug=False if get_device_type() not in ['Windows','Linux'] else False)
     except KeyboardInterrupt:
-        print("\nThanks For Using This Tools ♡")
+        pass
+
+    print("\nThanks For Using This Tools ♡")
