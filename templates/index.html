@@ -41,7 +41,7 @@
               {% for device in connected_device %}
                   {% if "serial_number" in device | lower %}
         
-                      <p>Android Device: {{ device.model }}<br> Serial Number: {{ device.serial_number }}</p>
+                      <p>Android Device: {{ device.model }}<br> Serial Number: {{ device.serial_number }} <br> Android Version: {{device.versi_andro}}</p>
                   {% else %}
                       
                       <p>Device: {{ device.model }}<br> UDID: {{ device.UDID }}</p>
@@ -70,7 +70,7 @@
             <option value="{{ identifier.split()[2] }}">{{ identifier }}</option>
             {% endfor %}
             {% else %}
-            <option disabled>No packages detected. Connect your USB device and run Frida.</option>
+            <option disabled>No packages detected. Connect your USB device and run Frida Server.</option>
             {% endif %}
           </select>
           <div class="mt-3">

@@ -65,7 +65,8 @@ def there_is_adb_and_devices():
             for device_id in device_ids:
                 model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
                 serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
-                available_devices.append({"model": model, "serial_number": serial_number})
+                versi_andro = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"])
+                available_devices.append({"model": model, "serial_number": serial_number, "versi_andro": versi_andro})
             adb_is_active = True
             message = "Device is available"
     except Exception as e:
