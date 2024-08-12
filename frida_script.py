@@ -224,9 +224,9 @@ def stop_frida():
 
 if __name__ == '__main__':
     try:
-        print(Fore.GREEN + """
+        print(Fore.GREEN + r"""
                            ‸
-                          _)\\.-.
+                          _)\.-.
          .-.__,___,_.-=-. )\`  ͡⇼`\_
      .-.__\__,__,__.-=-. `/  \     `\\
      {~,-~-,-~.-~,-,;;;;\ |   '--;`)/
@@ -247,6 +247,7 @@ if __name__ == '__main__':
         `"`  `"` `-,,;         `"`",,;
            
         """)
+
         print("Please Access http://127.0.0.1:5000\n")
         print("Press CTRL+C to stop this program.")
         socketio.run(app, debug=False if get_device_type() not in ['Windows','Linux'] else False)
