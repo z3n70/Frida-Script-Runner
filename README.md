@@ -41,7 +41,7 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
 2. Install Dependencies:
 
    ```bash
-   pip3 install -r requeirements.txt
+   pip3 install -r requirements.txt
 
 3. Run The Application
 
