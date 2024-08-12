@@ -39,7 +39,7 @@
             <label for="select-device-options" class="form-label">Your Devices</label>
             {% if connected_device %}
               {% for device in connected_device %}
-                {% if "serial_number" in device | lower %}
+                  {% if device.model | lower %}
         
                       <p>Android Device: {{ device.model }}<br> Serial Number: {{ device.serial_number }}</p>
                   {% else %}
