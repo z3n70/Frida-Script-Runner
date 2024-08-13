@@ -17,11 +17,11 @@ This tool simplifies the process of interacting with Frida, providing a user-fri
 ## Feature Details
 ![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/static/image.png)
 
-### How to Use
-https://github.com/z3n70/Frida-Script-Runner/assets/39817707/8ef5b44c-4052-4a6b-8a94-0a9a03255402
+### How to Use for Android & Custom Script
+[![Video Thumbnail](https://img.youtube.com/vi/LGx0L_uQQDY/0.jpg)](https://www.youtube.com/watch?v=LGx0L_uQQDY)
 
-### Custom Script
-https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-99c1-873b7fb2c4c7
+### How to Use for iOS
+[![Video Thumbnail](https://img.youtube.com/vi/kTp5RTjR5uA/0.jpg)](https://www.youtube.com/watch?v=kTp5RTjR5uA)
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
    http://127.0.0.1:5000
 
 ## Usage
-1. Connect your USB device and run Frida Server. (root or jailbreak required)
+1. Connect your USB device and run Frida Server. (root or jailbreak required) and if you use iphone make sure you have Frida installed on Cydia, Sileo, Zebra or another tool
 
 2. Open the web interface and select the target package and script.
 
@@ -65,7 +65,7 @@ https://github.com/z3n70/Frida-Script-Runner/assets/39817707/861a93e5-609e-40ec-
 **Note: If you intend to modify or add frida script files, ensure file are placed in the correct directory. Script Directory 1 For Android and Script Directory 2 For iOS, and you can see script.json for structure file and name**
 
 ## Contributing
-Contributions are welcome! Please contact me 
+Contributions are welcome! Please contact [me](https://x.com/zenalarifin) 
 
 ### Thanks and Support
 [Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham), [Revan](https://github.com/revan-ar)
