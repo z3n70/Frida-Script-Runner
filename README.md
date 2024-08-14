@@ -65,7 +65,7 @@ This tool simplifies the process of interacting with Frida, providing a user-fri
 **Note: If you intend to modify or add frida script files, ensure file are placed in the correct directory. Script Directory 1 For Android and Script Directory 2 For iOS, and you can see script.json for structure file and name**
 
 ## Contributing
-Contributions are welcome! Please contact [me](https://x.com/zenalarifin) 
+Contributions are welcome! Please contact [me](https://x.com/zenalarifin_) 
 
 ### Thanks and Support
 [Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham), [Revan](https://github.com/revan-ar)
