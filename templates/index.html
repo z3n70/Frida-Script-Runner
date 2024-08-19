@@ -36,6 +36,8 @@
       <div class="row">
         <div class="col bg">
           <form action="/run-frida">
+            <div class="row">
+              <div class="col">
             <label for="select-device-options" class="form-label">Your Devices</label>
             {% if connected_device %}
               {% for device in connected_device %}
@@ -50,6 +52,15 @@
           {% else %}
               <p>No device connected</p>
           {% endif %}
+          </div>
+
+          <div class="col">
+            <div class="mt-3 text-end">
+              <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
+            </div>
+          </div>
+
+        </div>
           <!-- <div class=" mb-3">
             <div class="form-check form-check-inline">
               <input name="select-device-options" class="form-check-input" type="radio" name="inlineRadioOptions" id="inlineRadio1" value="android">

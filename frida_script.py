@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_socketio import SocketIO
 from colorama import Fore, Back, Style, init
 import subprocess
@@ -146,6 +146,28 @@ def index():
             return render_template('index.html', error=f"Error: {e}")
     else:
         return render_template('no-usb.html')
+
+@app.route('/features', methods=['GET'])
+def features():
+    search_query = request.args.get('search', '').strip().lower()
+    packages = subprocess.check_output(['adb', 'shell', 'pm', 'list', 'packages']).decode('utf-8')
+    package_list = [pkg.split(':')[1].strip() for pkg in packages.split('\n') if pkg]
+
+    if search_query:
+        package_list = [pkg for pkg in package_list if search_query in pkg.lower()]
+    
+    return render_template('features.html', packages=package_list)
+
+@app.route('/download', methods=['POST'])
+def download():
+    package_name = request.form['package']
+    if package_name:
+        
+        apk_path = f"{package_name}.apk"
+        adb_pull_cmd = f"adb pull $(adb shell pm path {package_name} | awk -F':' '{{print $2}}') {apk_path}"
+        subprocess.call(adb_pull_cmd, shell=True)
+        return send_file(apk_path, as_attachment=True)
+    return 'No package selected'
 
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
