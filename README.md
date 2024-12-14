@@ -1,7 +1,7 @@
 
 # Frida Script Runner
 
-![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
+![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png")
 
 Frida Script Runner v1.3 is a versatile web-based tool designed for Android and iOS penetration testing purposes.
 
