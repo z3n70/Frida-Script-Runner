@@ -77,5 +77,5 @@ Contributions are welcome! Please contact [me](https://x.com/zenalarifin_)
 [Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham), [Revan](https://github.com/revan-ar)
 
 # Acknowledgments
-Special thanks to the [Frida](https://frida.re/) project for providing an exceptional instrumentation toolkit.
+Special thanks to the [Frida](https://frida.re/) project for providing an exceptional instrumentation toolkit.\
 Special thanks to the [Frida-ios-dump](https://github.com/AloneMonkey/frida-ios-dump) Pull a decrypted IPA from a jailbroken device
