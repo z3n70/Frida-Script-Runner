@@ -1,7 +1,7 @@
 
 # Frida Script Runner
 
-![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png?token=GHSAT0AAAAAAB2UAMETIWMNS5FMUJYWSNOGZMIQLVQ#")
+![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/FSR-logo.png)
 
 Frida Script Runner v0.2.0 is a versatile web-based tool designed for Android and iOS penetration testing purposes.
 
@@ -77,5 +77,5 @@ Contributions are welcome! Please contact [me](https://x.com/zenalarifin_)
 [Pawang Uler](https://github.com/karjok), [Om-Yud](https://github.com/Yudha-ard), [Mas Gondrong](https://github.com/xcapri), [Alfan](https://github.com/alfanilham), [Revan](https://github.com/revan-ar)
 
 # Acknowledgments
-Special thanks to the [Frida](https://frida.re/) project for providing an exceptional instrumentation toolkit.
+Special thanks to the [Frida](https://frida.re/) project for providing an exceptional instrumentation toolkit.\
 Special thanks to the [Frida-ios-dump](https://github.com/AloneMonkey/frida-ios-dump) Pull a decrypted IPA from a jailbroken device
