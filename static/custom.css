@@ -135,7 +135,7 @@ div {
 }
 
 .terminal-fsr {
-  background-color: rgba(35, 35, 35, 0.7);
+  background-color: rgba(0, 0, 0, 0.7);
   height: 39.55vh;
   width: "full";
   border-radius: 10px;
@@ -145,16 +145,15 @@ div {
 .head-terminal {
   height: 35px;
   border-radius: 10px 10px 0 0;
-  background: #e7ddd9;
+  background: #2b2533;
   padding: 10px;
 }
 
 .circle-red {
   height: 15px;
-  width: 10px;
+  width: 15px;
   background: red;
   border-radius: 50%;
-  box-shadow: 1px 1px 5px silver;
 }
 
 .circle-yellow {
@@ -163,7 +162,6 @@ div {
   background: orange;
   border-radius: 50%;
   margin-left: 10px;
-  box-shadow: 0px 0px 5px silver;
 }
 
 .circle-green {
@@ -172,7 +170,6 @@ div {
   background: green;
   border-radius: 50%;
   margin-left: 10px;
-  box-shadow: 1px 1px 5px silver;
 }
 
 .align-terminal {
@@ -188,6 +185,7 @@ div {
   margin-top: -5px;
   font-size: large;
   font-weight: 900;
+  color: white;
 }
 
 .cli {
@@ -209,6 +207,54 @@ div {
   overflow-y: scroll;
   overflow-wrap: break-word;
 }
+/* 
+.terminal-fsr {
+  background-color: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.head-terminal {
+  background-color: #333;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+.title-fsr {
+  color: #fff;
+  font-weight: 500;
+  font-family: 'Ubuntu Mono', monospace;
+}
+
+.cli {
+  flex-grow: 1;
+  background-color: #1e1e1e;
+  color: #e0e0e0;
+  font-family: 'Ubuntu Mono', monospace;
+  font-size: 0.9rem;
+}
+
+.cli-content, .cli-content-terminal {
+  height: 100%;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.circle-red, .circle-yellow, .circle-green {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.circle-red { background-color: #ff5f56; }
+.circle-yellow { background-color: #ffbd2e; }
+.circle-green { background-color: #27c93f; }
+ */
 
 .footer {
   height: 5vh;
@@ -242,4 +288,40 @@ pre {
 
 .wraptext {
   overflow-wrap: break-word;
+}
+
+.co{
+  color: #ffffff;
+}
+
+/*install apk*/
+/* Progress bar animations */
+.progress-bar-animated {
+  transition: width 0.3s ease;
+}
+
+/* Status message styling */
+#statusMessage {
+  transition: all 0.3s ease;
+}
+
+/* File input styling */
+#apkFile::-webkit-file-upload-button {
+  visibility: hidden;
+}
+#apkFile::before {
+  content: 'Choose file';
+  display: inline-block;
+  background: #f8f9fa;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 6px 12px;
+  outline: none;
+  white-space: nowrap;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+div.cb{
+  background-color: rgba(255, 255, 255, 0.8);
 }
