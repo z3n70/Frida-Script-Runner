@@ -1,4 +1,5 @@
-var socket = io.connect("http://" + document.domain + ":" + location.port);
+// var socket = io.connect("http://" + document.domain + ":" + location.port);
+var socket = io.connect(window.location.protocol + '//' + window.location.hostname + ':' + window.location.port);
 
 var logOutput = document.getElementById("outputFrida");
 var runButton = document.getElementById("runBtn");
@@ -7,6 +8,9 @@ var stopButton = document.getElementById("stopBtn");
 runButton.disabled = false;
 stopButton.disabled = true;
 
+socket.on('connected', function(data){
+  console.log(data)
+})
 socket.on("output", function (data) {
   var outputList = document.getElementById("output-list");
   var listItem = document.createElement("pre");
@@ -112,6 +116,13 @@ function runFrida() {
   logOutput.innerHTML = '</br><pre class="wraptext"></pre>';
 
   const formData = new FormData(form);
+  const packageValue = formData.get('package');
+  if (packageValue.includes('----')){
+    alert('Please select the package');
+    runButton.disabled = false;
+    stopButton.disabled = true;
+    return
+  }
   fetch("/run-frida", {
     method: "POST",
     body: formData,

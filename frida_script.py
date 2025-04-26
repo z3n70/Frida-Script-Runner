@@ -1,18 +1,15 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response
-from flask_socketio import SocketIO, emit
-from colorama import Fore, Back, Style, init
+from flask import Flask, render_template, request, jsonify, send_file
+from flask_socketio import SocketIO
+from colorama import Fore
 from werkzeug.utils import secure_filename
 import subprocess
 import os
 import json
-import base64
 import hashlib
 import threading
 import time
-import signal
 import logging
 import re
-import traceback
 import argparse
 import socket
 import sys
@@ -23,6 +20,7 @@ sys.tracebacklimit = 0
 # Handle command line arguments for custom port
 parser = argparse.ArgumentParser(description='FSR Tool')
 parser.add_argument('-p', '--port', type=int, default=5000, help='Port to run the server on')
+parser.add_argument('-v', '--verbose', action='store_true', help='Show the Frida output')
 args = parser.parse_args()
 
 app = Flask(__name__)
@@ -105,19 +103,14 @@ def there_is_adb_and_devices():
     return {"is_true": adb_is_active, "available_devices": available_devices, "message": message}
 
 def get_package_identifiers():
-        try:
-        # if get_device_type() in ["Windows","Linux"]:
-        #     process = subprocess.Popen(['frida-ps', '-Uai'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        #     result, _ = process.communicate()
-        #     lines = result.strip().split('\n')[1:]
-        # else:
-            result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
-            lines = result.stdout.strip().split('\n')[1:]
-            identifiers = [line.split()[1] + " - " + line.split()[-1]  for line in lines]
-            return identifiers
-        except Exception as e:
-            print(f"Error getting package identifiers: {e}")
-            return []
+    try:
+        result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True)
+        lines = result.stdout.strip().split('\n')[1:]
+        identifiers = [line.split()[1] + " - " + line.split()[-1]  for line in lines]
+        return identifiers
+    except Exception as e:
+        print(f"Error getting package identifiers: {e}")
+        return []
 
 def get_bypass_scripts():
     list_script = json.load(open("script.json","r"))["scripts"]
@@ -297,13 +290,6 @@ def install_apk():
         if 'filepath' in locals() and os.path.exists(filepath):
             os.remove(filepath)
 
-@app.route('/dump-ipa-form')
-def dump_ipa_form():
-    android_packages = get_package_identifiers()
-    ios_packages = []  
-
-    return render_template('features.html', ios_packages=ios_packages)
-
 @app.route('/dump-ipa', methods=['POST'])
 def dump_ipa():
     ipa_name = request.form.get('ipa_name')
@@ -390,9 +376,8 @@ def run_frida():
         if process and process.poll() is None:
             process.terminate()
 
-        socketio_thread = threading.Thread(target=run_frida_with_socketio, args=(script_path, package))
-        socketio_thread.daemon = True
-        socketio_thread.start()
+        socketio.start_background_task(run_frida_with_socketio, script_path, package)
+
 
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
     except KeyboardInterrupt:
@@ -406,15 +391,15 @@ def run_frida_with_socketio(script_path, package):
 
     try:
         command = ["frida", "-l", script_path, "-U", "-f", package]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
         while True:
             output = process.stdout.readline()
             if output == "" and process.poll() is not None:
                 break
             if output:
+                if args.verbose:
+                    print(output.replace('\n',''))
                 socketio.emit("output", {"data": output})
-                
                 time.sleep(0.010)
 
         socketio.emit("output", {"data": "Frida process finished."})
@@ -425,7 +410,7 @@ def run_frida_with_socketio(script_path, package):
 
 @socketio.on("connect")
 def handle_connect():
-    pass
+    socketio.emit('connected', 'connected')
 
 @app.route('/stop-frida')
 def stop_frida():
@@ -441,11 +426,7 @@ def stop_frida():
 def check_port(port):
     """Check if a port is available"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(('127.0.0.1', port))
-            return True
-        except OSError:
-            return False
+        return s.connect_ex(('127.0.0.1', port)) != 0
 
 def display_banner():
     """Display the application banner with help information"""
@@ -472,19 +453,15 @@ def display_banner():
     `"`  `"` `-,,;         `"`",,;
     """ + Fore.RESET
 
-    usage_info = Fore.CYAN + """
-Usage: python frida_script.py [options]
-Options:
-  -h, --help         Show this help message
-  -p PORT, --port PORT   Specify the port to run on (default: 5000)
-    """ + Fore.RESET
-    
-    return banner + usage_info
+    print(banner)
+    print(Fore.CYAN)
+    parser.print_help()
+    print(Fore.RESET)
 
-if __name__ == '__main__':
+
+def main():
+    display_banner()
     try:
-        print(display_banner())
-        
         port = args.port
         
         if not check_port(port):
@@ -514,5 +491,7 @@ if __name__ == '__main__':
         pass
     except Exception as e:
         print(Fore.RED + f"Error: {e}" + Fore.RESET)
-
     print(Fore.CYAN + "\nThanks For Using This Tools ♡" + Fore.RESET)
+
+if __name__ == '__main__':
+    main()
