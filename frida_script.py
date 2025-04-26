@@ -13,6 +13,17 @@ import signal
 import logging
 import re
 import traceback
+import argparse
+import socket
+import sys
+
+# Suppress traceback on keyboard interrupt
+sys.tracebacklimit = 0
+
+# Handle command line arguments for custom port
+parser = argparse.ArgumentParser(description='FSR Tool')
+parser.add_argument('-p', '--port', type=int, default=5000, help='Port to run the server on')
+args = parser.parse_args()
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -286,7 +297,6 @@ def install_apk():
         if 'filepath' in locals() and os.path.exists(filepath):
             os.remove(filepath)
 
-# dump ipa
 @app.route('/dump-ipa-form')
 def dump_ipa_form():
     android_packages = get_package_identifiers()
@@ -308,7 +318,7 @@ def dump_ipa():
     try:
         tmp_dir = f"{os.getcwd()}/tmp"
         os.makedirs(tmp_dir, exist_ok=True)
-        #pake frida ios dump yang dari github
+
         command = [
             "python3", "dump.py",
             "-o", f"{os.getcwd()}/tmp/{ipa_name}.ipa",
@@ -380,7 +390,6 @@ def run_frida():
         if process and process.poll() is None:
             process.terminate()
 
-        # memakai threading flask
         socketio_thread = threading.Thread(target=run_frida_with_socketio, args=(script_path, package))
         socketio_thread.daemon = True
         socketio_thread.start()
@@ -422,7 +431,6 @@ def handle_connect():
 def stop_frida():
     global process
 
-# proses dihentikan sebelum dikirim ke response
     if process and process.poll() is None:
         process.kill()
         process.wait() 
@@ -430,36 +438,81 @@ def stop_frida():
     else:
         return 'Frida process is not running', 200
 
+def check_port(port):
+    """Check if a port is available"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('127.0.0.1', port))
+            return True
+        except OSError:
+            return False
+
+def display_banner():
+    """Display the application banner with help information"""
+    banner = Fore.GREEN + r"""
+                       ‸
+                      _)\.-.
+     .-.__,___,_.-=-. )\`  ͡⇼`\_
+ .-.__\__,__,__.-=-. `/  \     `\\
+ {~,-~-,-~.-~,-,;;;;\ |   '--;`)/
+  \-,~_-~_-,~-,(_(_(;\/   ,;/
+   ",-.~_,-~,-~,)_)_)'.  ;;(
+     `~-,_-~,-~(_(_(_(_\  `;\\ 
+,          `"~~--,)_)_)_)\_   \\
+|\              (_(_/_(_,   \  ;  
+\ '-.       _.--'  /_/_/_)   | |  FSR v0.2.0       
+'--.\    .'          /_/    | |
+    ))  /       \      |   /.'
+   //  /,        | __.'|  ||
+  //   ||        /`    (  ||
+ ||    ||      .'       \ \\
+ ||    ||    .'_         \ \\
+  \\   //   / _ `\         \ \\__
+   \\'-'/(   _  `\,;        \ '--:,
+    `"`  `"` `-,,;         `"`",,;
+    """ + Fore.RESET
+
+    usage_info = Fore.CYAN + """
+Usage: python frida_script.py [options]
+Options:
+  -h, --help         Show this help message
+  -p PORT, --port PORT   Specify the port to run on (default: 5000)
+    """ + Fore.RESET
+    
+    return banner + usage_info
+
 if __name__ == '__main__':
     try:
-        print(Fore.GREEN + r"""
-                           ‸
-                          _)\.-.
-         .-.__,___,_.-=-. )\`  ͡⇼`\_
-     .-.__\__,__,__.-=-. `/  \     `\\
-     {~,-~-,-~.-~,-,;;;;\ |   '--;`)/
-      \-,~_-~_-,~-,(_(_(;\/   ,;/
-       ",-.~_,-~,-~,)_)_)'.  ;;(
-         `~-,_-~,-~(_(_(_(_\  `;\\ 
-   ,          `"~~--,)_)_)_)\_   \\
-   |\              (_(_/_(_,   \  ;  
-   \ '-.       _.--'  /_/_/_)   | |  FSR v0.2.0       
-    '--.\    .'          /_/    | |
-        ))  /       \      |   /.'
-       //  /,        | __.'|  ||
-      //   ||        /`    (  ||
-     ||    ||      .'       \ \\
-     ||    ||    .'_         \ \\
-      \\   //   / _ `\         \ \\__
-       \\'-'/(   _  `\,;        \ '--:,
-        `"`  `"` `-,,;         `"`",,;
-           
-        """)
-
-        print("Please Access http://127.0.0.1:5000\n")
+        print(display_banner())
+        
+        port = args.port
+        
+        if not check_port(port):
+            print(Fore.YELLOW + f"Port {port} is already in use!" + Fore.RESET)
+            if port == 5000:
+                alt_port = 5001
+                response = input(f"Would you like to use port {alt_port} instead? (Y/n): ").strip().lower()
+                if response == "" or response.startswith('y'):
+                    port = alt_port
+                    if not check_port(port):
+                        print(Fore.RED + f"Port {alt_port} is also in use. Please specify a different port using -p option." + Fore.RESET)
+                        sys.exit(1)
+                else:
+                    print(Fore.YELLOW + "Please try again with a different port using -p option." + Fore.RESET)
+                    sys.exit(0)
+            else:
+                print(Fore.YELLOW + "Please specify a different port using -p option." + Fore.RESET)
+                sys.exit(0)
+        
+        print(Fore.GREEN + f"Please Access http://127.0.0.1:{port}" + Fore.RESET)
         print("Press CTRL+C to stop this program.")
-        socketio.run(app, debug=False if get_device_type() not in ['Windows','Linux'] else False)
+        
+        logging.getLogger('werkzeug').setLevel(logging.ERROR)
+        socketio.run(app, port=port, debug=False if get_device_type() not in ['Windows','Linux'] else False)
+    
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(Fore.RED + f"Error: {e}" + Fore.RESET)
 
-    print("\nThanks For Using This Tools ♡")
+    print(Fore.CYAN + "\nThanks For Using This Tools ♡" + Fore.RESET)
