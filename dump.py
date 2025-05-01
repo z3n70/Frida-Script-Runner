@@ -6,9 +6,10 @@
 
 from __future__ import print_function
 from __future__ import unicode_literals
+from importlib import reload
 import sys
 import codecs
-import frida
+import frida # type: ignore
 import threading
 import os
 import shutil
@@ -17,10 +18,10 @@ import argparse
 import tempfile
 import subprocess
 import re
-import paramiko
-from paramiko import SSHClient
-from scp import SCPClient
-from tqdm import tqdm
+import paramiko # type: ignore
+from paramiko import SSHClient # type: ignore
+from scp import SCPClient # type: ignore
+from tqdm import tqdm # type: ignore
 import traceback
 
 IS_PY2 = sys.version_info[0] < 3
