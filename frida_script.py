@@ -324,7 +324,7 @@ def dump_ipa():
         os.makedirs(tmp_dir, exist_ok=True)
 
         command = [
-            "python3", "dump.py",
+            "python", "dump.py",
             "-o", f"{os.getcwd()}/tmp/{ipa_name}.ipa",
             "-P", password,
             "-H", host,
