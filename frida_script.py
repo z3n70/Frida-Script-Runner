@@ -13,6 +13,7 @@ import re
 import argparse
 import socket
 import sys
+import frida # type: ignore
 
 # Suppress traceback on keyboard interrupt
 sys.tracebacklimit = 0
@@ -65,6 +66,27 @@ def run_ideviceinfo(timeout=5):
     except subprocess.TimeoutExpired:
         return "Error: ideviceinfo command timed out."
     
+def detect_ios_device_with_frida():
+    try:
+        device_manager = frida.get_device_manager()
+        devices = device_manager.enumerate_devices()
+
+        print(f"Devices detected: {devices}") 
+
+        device_list = []
+        for device in devices:
+            if device.type == 'usb' and 'iPhone' in device.name:
+                device_list.append({'id': device.id, 'name': device.name})
+        if device_list:
+            print("Device detected:", device_list) 
+            return device_list
+        else:
+            print("No iOS device detected.")
+            return None
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
+        return None
+    
 def there_is_adb_and_devices():
     adb_is_active = False
     available_devices = []
@@ -85,20 +107,16 @@ def there_is_adb_and_devices():
             message = "Device is available"
     except Exception as e:
         message = f"Error checking Android device connectivity: {e}"
-    else:
-        # for ios use ideviceinfo
-        try:
-            ideviceinfo_output = run_ideviceinfo()
-            if ideviceinfo_output:
-                adb_is_active = True
 
-                deviceId = re.search(r'UniqueDeviceID:\s*([a-zA-Z0-9]+)', ideviceinfo_output)
-                model = re.search(r'ProductType:\s*([\w\d,]+)', ideviceinfo_output)
-                if deviceId and model:
-                    available_devices.append({"model": model.group(1).strip(),  "UDID": deviceId.group(1).strip()})
-                    message = "iOS device is available"
-        except Exception as e:
-            message = f"Error checking iOS device connectivity: {e}"
+    try:
+        ios_devices = detect_ios_device_with_frida()
+        if ios_devices:
+            for device in ios_devices:
+                available_devices.append({"model": device["name"], "UDID": device["id"]})
+            adb_is_active = True
+            message = "iOS device is available"
+    except Exception as e:
+        message = f"Error checking iOS device connectivity with Frida: {e}"
 
     return {"is_true": adb_is_active, "available_devices": available_devices, "message": message}
 
@@ -145,7 +163,7 @@ def get_script_content_route():
 def index():
     device_type = get_device_type()
     adb_check = there_is_adb_and_devices()
-    if adb_check["is_true"]:
+    if adb_check and adb_check.get("is_true"):
         try:
             identifiers = get_package_identifiers()
             bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
