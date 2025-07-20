@@ -1,4 +1,7 @@
-![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/develop/static/img/fsr_logo.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/develop/static/img/fsr_logo.png" width="450">
+</p>
+
 
 # Frida Script Runner
 
