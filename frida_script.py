@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, abort
 from flask_socketio import SocketIO
 from colorama import Fore
 from werkzeug.utils import secure_filename
@@ -36,7 +36,36 @@ if "tmp" not in os.listdir("."):
     os.mkdir("tmp")
 class OsNotSupportedError(Exception):
     pass
-  
+with open("static/data/codeshare_data.json", "r", encoding="utf-8") as f:
+    codeshare_snippets = json.load(f)
+
+@app.route("/codeshare/search")
+def codeshare_search():
+    query = request.args.get("keyword", "").lower()
+    if not query:
+        return jsonify([])
+
+    keywords = query.split()
+    results = []
+    for s in codeshare_snippets:
+        combined = f"{s['title']} {s['preview']}".lower()
+        if all(k in combined for k in keywords):
+            results.append({
+                "id": s["id"],
+                "title": s["title"],
+                "preview": s["preview"],
+                "source": s["url"],
+                "script": s["code"]
+            })
+    return jsonify(results)
+
+@app.route("/snippet/<int:snippet_id>")
+def get_snippet(snippet_id):
+    for s in codeshare_snippets:
+        if s["id"] == snippet_id:
+            return jsonify({"code": s["code"]})
+    return abort(404)
+
 def get_device_type():
     if os.name == 'nt':
         return "Windows"
@@ -113,7 +142,7 @@ def get_package_identifiers():
         return []
 
 def get_bypass_scripts():
-    list_script = json.load(open("script.json","r"))["scripts"]
+    list_script = json.load(open("static/data/script.json","r"))["scripts"]
     IOS = []
     ANDROID = []
     for item in list_script:

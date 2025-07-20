@@ -26,11 +26,11 @@
                   {% if connected_device %}
                     {% for device in connected_device %}
                       {% if "serial_number" in device | lower %}
-                        <p class="mb-1">Android Device: {{ device.model }}</p>
+                        <p class="mb-1">Android Device: <i class="bi bi-android text-success"></i> {{ device.model }}</p>
                         <p class="mb-1">Serial: {{ device.serial_number }}</p>
                         <p class="mb-1">Android Version: {{device.versi_andro}}</p>
                       {% else %}
-                        <p class="mb-1">Device: {{ device.model }}</p>
+                        <p class="mb-1">Device: <i class="bi bi-apple text-dark"></i> {{ device.model }}</p>
                         <p class="mb-1">UDID: {{ device.UDID }}</p>
                       {% endif %}
                     {% endfor %}
@@ -80,10 +80,31 @@
                   </select>
                 </div>
               </div>
+              <br>
+              <!-- frida codeshare search -->
               <div class="mb-3">
-                <br>
+                <label for="codeshareSearchInput" class="form-label">Search Frida Codeshare Script</label>
+                <input type="text" class="form-control" id="codeshareSearchInput" placeholder="Search Frida script..." autocomplete="off">
+                                
+                <div class="modal fade" id="codeshareResultsModal" tabindex="-1" aria-labelledby="codeshareResultsLabel" aria-hidden="true">
+                  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                      <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">Search Frida Codeshare Script</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body">
+                        <input type="text" id="modalSearchInput" class="form-control mb-3" placeholder="Search in modal...">
+                        <div id="modalResults"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-3">
                 <label for="script_content" class="form-label">Script Content</label>
-                <textarea class="form-control" name="script_content" id="scriptContent" rows="5" placeholder="Script Content" style="height: 195px;"></textarea>
+                <textarea class="form-control" name="script_content" id="scriptContent" rows="5" placeholder="Script Content" style="height: 150px;"></textarea>
               </div>
     
               <div class="d-flex justify-content-between align-items-center">

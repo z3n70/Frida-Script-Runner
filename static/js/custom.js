@@ -144,4 +144,62 @@ function appendContent(content) {
   outputContainer.innerHTML += `<span class="text-success">~</span> ${content} </br>`;
   outputContainer.scrollTop = outputContainer.scrollHeight;
 }
-// runFrida();
+// modal(); pada codeshare search
+document.addEventListener("DOMContentLoaded", function () {
+  const mainInput = document.getElementById("codeshareSearchInput");
+  const modalInput = document.getElementById("modalSearchInput");
+  const modalResultsDiv = document.getElementById("modalResults");
+  const modalEl = document.getElementById("codeshareResultsModal");
+  const bsModal = new bootstrap.Modal(modalEl);
+
+  function performSearch(keyword) {
+    if (!keyword) {
+      modalResultsDiv.innerHTML = "<p>No search keyword.</p>";
+      return;
+    }
+
+    fetch(`/codeshare/search?keyword=${encodeURIComponent(keyword)}`)
+      .then(res => res.json())
+      .then(data => {
+        modalResultsDiv.innerHTML = "";
+
+        if (data.length === 0) {
+          modalResultsDiv.innerHTML = "<p>No results found.</p>";
+          return;
+        }
+
+        const list = document.createElement("ul");
+        list.className = "list-group";
+
+        data.forEach(item => {
+          const li = document.createElement("li");
+          li.className = "list-group-item";
+          li.style.cursor = "pointer";
+          li.innerHTML = `<h5>${item.title}</h5><a href="${item.source}" target="_blank" class="text-decoration-none d-block small text-muted">${item.source}</a><p>${item.preview}</p>`;
+          li.onclick = () => {document.getElementById("scriptContent").value = item.script;
+            bsModal.hide();
+            setTimeout(() => {
+              document.querySelectorAll(".modal-backdrop").forEach(el => el.remove());
+              document.body.classList.remove("modal-open");
+            }, 300); 
+          };
+          list.appendChild(li);
+        });
+        modalResultsDiv.appendChild(list);
+      });
+  }
+
+  mainInput.addEventListener("input", function () {
+    const keyword = mainInput.value.trim();
+    if (keyword.length === 0) return;
+
+    bsModal.show();
+    modalInput.value = keyword;
+    performSearch(keyword);
+  });
+
+  modalInput.addEventListener("input", function () {
+    const keyword = modalInput.value.trim();
+    performSearch(keyword);
+  });
+});
