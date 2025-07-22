@@ -102,11 +102,11 @@ stopButton.addEventListener("click", function (event) {
 // }
 
 runButton.addEventListener("click", function (event) {
-  var clearOutput = document.getElementById("clearOutput")
-  clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`
   event.preventDefault();
   runButton.disabled = true;
   stopButton.disabled = false;
+  var clearOutput = document.getElementById("clearOutput");
+  clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`;
   runFrida();
 });
 
