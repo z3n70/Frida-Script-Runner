@@ -42,7 +42,71 @@
                   <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
                 </div>
               </div>
-    
+              
+              <!-- Frida Server Status -->
+              <div class="mb-3">
+                <h3 class="h6 fw-bold text-dark"><i class="bi bi-server"></i> Frida Server Status</h3>
+                {% if frida_status %}
+                  {% for device_id, status in frida_status.items() %}
+                    <div class="card border-0 bg-light mb-2">
+                      <div class="card-body p-2">
+                        <div class="row align-items-center">
+                          <div class="col-8">
+                            <small class="text-muted">
+                              {% if "device_id" in status.device_info %}
+                                <i class="bi bi-android text-success"></i> {{ status.device_info.model }}
+                              {% else %}
+                                <i class="bi bi-apple text-dark"></i> {{ status.device_info.model }}
+                              {% endif %}
+                            </small>
+                            <div class="d-flex align-items-center mt-1">
+                              <span class="badge {% if status.installed %}bg-success{% else %}bg-warning{% endif %} me-2">
+                                <i class="bi {% if status.installed %}bi-check-circle{% else %}bi-exclamation-triangle{% endif %}"></i>
+                                {% if status.installed %}
+                                  {% if status.frida_server_name %}{{ status.frida_server_name }}{% else %}Installed{% endif %}
+                                {% else %}Not Installed{% endif %}
+                              </span>
+                              <span class="badge {% if status.running %}bg-success{% else %}bg-danger{% endif %}">
+                                <i class="bi {% if status.running %}bi-play-circle{% else %}bi-stop-circle{% endif %}"></i>
+                                {% if status.running %}Running{% else %}Stopped{% endif %}
+                              </span>
+                            </div>
+                          </div>
+                          <div class="col-4 text-end">
+                            {% if "device_id" in status.device_info %}
+                              {% if not status.running %}
+                                <div class="d-flex flex-column gap-1">
+                                  <button class="btn btn-sm btn-success start-frida-server" data-device-id="{{ device_id }}">
+                                    <i class="bi bi-play-fill"></i> Start
+                                  </button>
+                                  <div class="form-check form-check-sm">
+                                    <input class="form-check-input force-download-checkbox" type="checkbox" id="force-download-{{ device_id }}">
+                                    <label class="form-check-label small" for="force-download-{{ device_id }}">
+                                      Force Download
+                                    </label>
+                                  </div>
+                                </div>
+                              {% else %}
+                                <button class="btn btn-sm btn-danger stop-frida-server" data-device-id="{{ device_id }}">
+                                  <i class="bi bi-stop-fill"></i> Stop
+                                </button>
+                              {% endif %}
+                            {% else %}
+                              <span class="text-muted small">iOS - No Server Needed</span>
+                            {% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <small>No devices connected or Frida server status unavailable</small>
+                  </div>
+                {% endif %}
+              </div>
+
               <div class="mb-3">
                 <label for="search-packages" class="form-label">Search Packages</label>
                 <div class="input-group">
@@ -54,14 +118,17 @@
                 <div class="col-md-6">
                   <label for="packageSelect" class="form-label">Select Package</label>
                   <select name="package" id="packageSelect" class="form-select" required>
-                    {% if identifiers %}
-                      {% for identifier in identifiers %}
-                        <option value="{{ identifier.split()[2] }}">{{ identifier }}</option>
-                      {% endfor %}
-                    {% else %}
-                      <option disabled>No packages detected. Connect your USB device and run Frida Server.</option>
-                    {% endif %}
+                    <option disabled selected>Loading packages...</option>
                   </select>
+                  <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadPackages()">
+                      <i class="bi bi-arrow-clockwise"></i> Refresh Packages
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning ms-2" onclick="restartFridaServer()">
+                      <i class="bi bi-arrow-clockwise"></i> Restart Frida Server
+                    </button>
+                    <small class="text-muted d-block mt-1">Start Frida Server first, then click Refresh. Use Restart if packages don't load.</small>
+                  </div>
                 </div>
       
                 <div class="col-md-6">
@@ -142,6 +209,11 @@
             </div>
             <div class="col title-fsr ps-2">
               <span>FSR Logs</span>
+            </div>
+            <div class="col-auto">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearFSRLogs()">
+                <i class="bi bi-trash"></i> Clear
+              </button>
             </div>
           </div>
         </div>
