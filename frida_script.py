@@ -13,14 +13,18 @@ import re
 import argparse
 import socket
 import sys
+import requests
+import shutil
+import lzma
+import wget
 
-# Suppress traceback on keyboard interrupt
 sys.tracebacklimit = 0
 
-# Handle command line arguments for custom port
 parser = argparse.ArgumentParser(description='FSR Tool')
 parser.add_argument('-p', '--port', type=int, default=5000, help='Port to run the server on')
 parser.add_argument('-v', '--verbose', action='store_true', help='Show the Frida output')
+parser.add_argument('--runw', nargs='+', metavar=('OS', 'FRIDA_VERSION'), help='Specify the OS and optional Frida version, e.g., --runw mac 16.0.7')
+parser.add_argument('--force-download', action='store_true', help='Force download latest Frida server even if local file exists')
 args = parser.parse_args()
 
 app = Flask(__name__)
@@ -93,6 +97,167 @@ def run_ideviceinfo(timeout=5):
         return result.stdout
     except subprocess.TimeoutExpired:
         return "Error: ideviceinfo command timed out."
+
+def get_frida_server_url(architecture, version=None):
+    if version:
+        url = f'https://api.github.com/repos/frida/frida/releases/tags/{version}'
+    else:
+        url = 'https://api.github.com/repos/frida/frida/releases/latest'
+    
+    response = requests.get(url)
+    response.raise_for_status()
+    release_data = response.json()
+    
+    for asset in release_data['assets']:
+        if 'frida-server' in asset['name'] and f'android-{architecture.strip()}' in asset['name']:
+            print(f"[+] Found frida-server: {asset['browser_download_url']}")
+            return asset['browser_download_url']
+    
+    print("[-] Frida server not found for this architecture.")
+    return None
+
+def frida_server_installed(device_id):
+    try:
+        result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"])
+        return "frida-server" in result
+    except subprocess.CalledProcessError:
+        return False
+
+def is_frida_server_running(device_id):
+    try:
+        result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
+        return "frida-server" in result
+    except subprocess.CalledProcessError:
+        return False
+
+def download_and_push_frida(architecture, os_type, version=None):
+    frida_server_path = os.path.join(f"./frida-server/{os_type}", "frida-server")
+    
+    should_download = True
+    if os.path.isfile(frida_server_path) and version is None and not args.force_download:
+        try:
+            latest_url = get_frida_server_url(architecture, None)
+            if latest_url:
+                import re
+                version_match = re.search(r'frida-server-(\d+\.\d+\.\d+)', latest_url)
+                if version_match:
+                    latest_version = version_match.group(1)
+                    print(f"[i] Latest Frida version available: {latest_version}")
+                    
+                    import time
+                    file_age = time.time() - os.path.getmtime(frida_server_path)
+                    if file_age < 86400:  # 24 hours in seconds
+                        print(f"[=] Frida server for {os_type} exists and is recent (< 24h), skipping download.")
+                        print(f"[i] To force download latest version, use: --runw {os_type} {latest_version} or --runw {os_type} --force-download")
+                        should_download = False
+                    else:
+                        print(f"[i] Frida server for {os_type} is older than 24h, downloading latest version...")
+        except Exception as e:
+            print(f"[w] Could not check latest version: {e}")
+            should_download = True
+    
+    if should_download:
+        os.makedirs(f"./frida-server/{os_type}", exist_ok=True)
+        frida_url = get_frida_server_url(architecture, version)
+        
+        if frida_url is None:
+            print(f"Error: No Frida server URL found for architecture: {architecture}")
+            return
+
+        download_path = os.path.join(f"frida-server/{os_type}", "frida-server-download.xz")
+        print(f"[+] Downloading Frida server from: {frida_url}")
+        wget.download(frida_url, download_path)
+        
+        with lzma.open(download_path) as src, open(frida_server_path, 'wb') as dst:
+            shutil.copyfileobj(src, dst)
+        
+        # Clean up downloaded file
+        if os.path.exists(download_path):
+            os.remove(download_path)
+        
+        print(f"\n[+] Downloaded and extracted frida-server for {os_type}")
+    else:
+        print(f"[=] Using existing Frida server for {os_type}")
+
+    adb_check = there_is_adb_and_devices()
+    if adb_check["is_true"]:
+        device_id = f"{adb_check['available_devices'][0].get('device_id')}" 
+
+        if not frida_server_installed(device_id):
+            rootboot = run_adb_command(["adb", "-s", device_id, "root"])
+            run_adb_command(["adb", "-s", device_id, "push", frida_server_path, "/data/local/tmp"])
+            run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", "/data/local/tmp/frida-server"])
+        
+        if not is_frida_server_running(device_id):
+            rootboot = run_adb_command(["adb", "-s", device_id, "root"])
+            run_adb_command(["adb", "-s", device_id, "shell", "/data/local/tmp/frida-server", "&"])
+        
+        print(f"Started frida-server for {os_type}")
+
+def export_address_port_win(version=None):
+    current_ip = os.getenv('ANDROID_ADB_SERVER_ADDRESS')
+    current_port = os.getenv('ANDROID_ADB_SERVER_PORT')
+
+    if current_ip and current_port:
+        print(f"Environment variables already set:\n"
+              f"ANDROID_ADB_SERVER_ADDRESS: {current_ip}\n"
+              f"ANDROID_ADB_SERVER_PORT: {current_port}")
+        return
+
+    print(f"\n[WARNING] You are running in WSL, setting up ADB over network...\n")
+
+    ip = input("Enter the IP address: ")
+    port = input("Enter the port number: ")
+
+    os.environ['ANDROID_ADB_SERVER_PORT'] = port
+    os.environ['ANDROID_ADB_SERVER_ADDRESS'] = ip
+
+    print(f"\nANDROID_ADB_SERVER_PORT: {os.getenv('ANDROID_ADB_SERVER_PORT')}")
+    print(f"ANDROID_ADB_SERVER_ADDRESS: {os.getenv('ANDROID_ADB_SERVER_ADDRESS')}")
+
+    verify_command = 'echo $ANDROID_ADB_SERVER_PORT && echo $ANDROID_ADB_SERVER_ADDRESS'
+    result = subprocess.run(verify_command, shell=True, text=True, capture_output=True)
+    print("\nVerification Output:\n", result.stdout)
+
+    result2 = run_adb_command(["adb", "devices"])
+    print("\nVerification Output:\n", result2)
+
+    adb_check = there_is_adb_and_devices()
+    if adb_check["is_true"] and adb_check['available_devices']:
+        device_id = adb_check['available_devices'][0].get('device_id') 
+        if device_id:
+            architecture = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.cpu.abi"])
+            download_and_push_frida(architecture, "wsl", version)
+        else:
+            print(f"[-] No device ID found for WSL")
+    else:
+        print(f"[-] No Android devices connected for WSL")
+
+def push_and_run_fs(runw_args):
+    os_type = runw_args[0]
+    version = None
+    
+    # Parse arguments
+    if len(runw_args) > 1:
+        # Check if second argument is version or force-download flag
+        if runw_args[1] == "--force-download":
+            version = None  # Will use latest version
+        else:
+            version = runw_args[1]
+
+    if os_type == "wsl":
+        export_address_port_win(version)
+    else:
+        adb_check = there_is_adb_and_devices()
+        if adb_check["is_true"] and adb_check['available_devices']:
+            device_id = adb_check['available_devices'][0].get('device_id') 
+            if device_id:
+                architecture = run_adb_command(["adb","-s", device_id, "shell", "getprop", "ro.product.cpu.abi"])
+                download_and_push_frida(architecture, os_type, version)
+            else:
+                print(f"[-] No device ID found for {os_type}")
+        else:
+            print(f"[-] No Android devices connected for {os_type}")
     
 def there_is_adb_and_devices():
     adb_is_active = False
@@ -109,7 +274,7 @@ def there_is_adb_and_devices():
                 model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
                 serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
                 versi_andro = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"])
-                available_devices.append({"model": model, "serial_number": serial_number, "versi_andro": versi_andro})
+                available_devices.append({"device_id": device_id, "model": model, "serial_number": serial_number, "versi_andro": versi_andro})
             adb_is_active = True
             message = "Device is available"
     except Exception as e:
@@ -522,5 +687,8 @@ def main():
         print(Fore.RED + f"Error: {e}" + Fore.RESET)
     print(Fore.CYAN + "\nThanks For Using This Tools ♡" + Fore.RESET)
 
-if __name__ == '__main__':
+# MAIN ENTRY POINT
+if args.runw:
+    push_and_run_fs(args.runw)
+else:
     main()

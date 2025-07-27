@@ -20,3 +20,5 @@ scp
 six
 tqdm
 wcwidth
+wget
+requests
