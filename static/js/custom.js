@@ -492,15 +492,21 @@ document.addEventListener("DOMContentLoaded", function () {
         // Update the button to show start option
         const cardBody = button.closest('.card-body');
         const statusBadges = cardBody.querySelectorAll('.badge');
+        
+        // Update running status badge to show "Stopped"
         statusBadges[1].className = 'badge bg-danger';
         statusBadges[1].innerHTML = '<i class="bi bi-stop-circle"></i> Stopped';
         
+        // Update button to show "Start" option
         button.className = 'btn btn-sm btn-success start-frida-server';
         button.innerHTML = '<i class="bi bi-play-fill"></i> Start';
         button.setAttribute('data-device-id', deviceId);
         
         // Show success message
         appendContent(`Frida server stopped successfully: ${data.message}`);
+        
+        // Add visual feedback
+        console.log('Status updated: Frida server stopped');
       } else {
         throw new Error(data.error || 'Failed to stop Frida server');
       }
@@ -528,7 +534,7 @@ document.addEventListener("DOMContentLoaded", function () {
           const status = data[deviceId];
           const statusCard = document.querySelector(`[data-device-id="${deviceId}"]`);
           if (statusCard) {
-            const cardBody = statusCard.closest('.card-body');
+            const cardBody = statusCard.querySelector('.card-body');
             const statusBadges = cardBody.querySelectorAll('.badge');
             
             // Update installed status
@@ -555,6 +561,11 @@ document.addEventListener("DOMContentLoaded", function () {
               }
               button.disabled = false;
             }
+            
+            // Debug log
+            console.log(`Status refresh for ${deviceId}: Running=${status.running}, Installed=${status.installed}`);
+          } else {
+            console.warn(`Status card not found for device: ${deviceId}`);
           }
         });
       })
@@ -565,4 +576,72 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Refresh status every 10 seconds
   setInterval(refreshFridaStatus, 10000);
+  
+  // Manual refresh function - can be called from console or button
+  window.manualRefreshStatus = function() {
+    console.log('Manual status refresh triggered');
+    
+    // Use force refresh endpoint for more reliable status
+    fetch('/force-refresh-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        console.error('Error refreshing Frida status:', data.error);
+        return;
+      }
+      
+      // Update status for each device
+      Object.keys(data).forEach(deviceId => {
+        const status = data[deviceId];
+        const statusCard = document.querySelector(`[data-device-id="${deviceId}"]`);
+        if (statusCard) {
+          const cardBody = statusCard.querySelector('.card-body');
+          const statusBadges = cardBody.querySelectorAll('.badge');
+          
+          // Update installed status
+          statusBadges[0].className = status.installed ? 'badge bg-success me-2' : 'badge bg-warning me-2';
+          statusBadges[0].innerHTML = status.installed ? 
+            `<i class="bi bi-check-circle"></i> ${status.frida_server_name || 'Installed'}` : 
+            '<i class="bi bi-exclamation-triangle"></i> Not Installed';
+          
+          // Update running status
+          statusBadges[1].className = status.running ? 'badge bg-success' : 'badge bg-danger';
+          statusBadges[1].innerHTML = status.running ? 
+            '<i class="bi bi-play-circle"></i> Running' : 
+            '<i class="bi bi-stop-circle"></i> Stopped';
+          
+          // Update button
+          const button = cardBody.querySelector('button');
+          if (button) {
+            if (status.running) {
+              button.className = 'btn btn-sm btn-danger stop-frida-server';
+              button.innerHTML = '<i class="bi bi-stop-fill"></i> Stop';
+            } else {
+              button.className = 'btn btn-sm btn-success start-frida-server';
+              button.innerHTML = '<i class="bi bi-play-fill"></i> Start';
+            }
+            button.disabled = false;
+          }
+          
+          console.log(`Manual refresh for ${deviceId}: Running=${status.running}, Installed=${status.installed}`);
+        } else {
+          console.warn(`Status card not found for device: ${deviceId}`);
+        }
+      });
+      
+      appendContent('Status refreshed manually');
+    })
+    .catch(error => {
+      console.error('Error refreshing Frida status:', error);
+      appendContent(`Error refreshing status: ${error.message}`);
+    });
+  };
+  
+  // Initial status refresh
+  refreshFridaStatus();
 });
