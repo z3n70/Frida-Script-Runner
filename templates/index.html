@@ -1,185 +1,257 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Frida Script Runner</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-      />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.3/socket.io.js"></script>
-    <link rel="stylesheet" type="text/css" href="../static/custom.css" />
-  </head>
-  <body>
-    <div class="container1">
-      <div class="justify-content-center logo">
-        <img src="../static/FSR-logo.png" class="size-logo mt-3" alt="logo">
-        <h2 class="text-center white">Frida Script Runner</h2>
-      </div>
-      <div class="row g-3">
-        <div class="col-lg-6">
-          <div class="card shadow-sm h-100">
-            <div class="card-header bg-primary text-white">
-              <h2 class="h5 mb-0"><i class="bi bi-terminal"></i> Frida Tool</h2>
-            </div>
-            <div class="card-body bg-white">
-              <div class="p-3 border rounded bg-white">
-                <form action="/run-frida">
-                  <div class="row mb-3">
-                    <div class="col-8">
-                      <h3 class="h6 fw-bold text-dark"><i class="bi bi-phone"></i> Connected Devices</h3>
-                      {% if connected_device %}
-                        {% for device in connected_device %}
-                          {% if "serial_number" in device | lower %}
-                            <p class="mb-1">Android Device: {{ device.model }}</p>
-                            <p class="mb-1">Serial: {{ device.serial_number }}</p>
-                            <p class="mb-1">Android Version: {{device.versi_andro}}</p>
-                          {% else %}
-                            <p class="mb-1">Device: {{ device.model }}</p>
-                            <p class="mb-1">UDID: {{ device.UDID }}</p>
-                          {% endif %}
-                        {% endfor %}
+{% extends "base.html" %}
+
+{% block title %}
+    <title>Frida Script Runner | Main Menu</title>
+{% endblock %}
+
+{% block body %}
+
+<div class="container1">
+  <div class="justify-content-center logo">
+    <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" class="size-logo mt-3" alt="logo">
+    <h2 class="text-center white">Frida Script Runner</h2>
+  </div>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white">
+          <h2 class="h5 mb-0"><i class="bi bi-terminal"></i> Frida Tool</h2>
+        </div>
+        <div class="card-body bg-white">
+          <div class="p-3 border rounded bg-white">
+            <form action="/run-frida">
+              <div class="row mb-3">
+                <div class="col-8">
+                  <h3 class="h6 fw-bold text-dark"><i class="bi bi-phone"></i> Connected Devices</h3>
+                  {% if connected_device %}
+                    {% for device in connected_device %}
+                      {% if "serial_number" in device | lower %}
+                        <p class="mb-1">Android Device: <i class="bi bi-android text-success"></i> {{ device.model }}</p>
+                        <p class="mb-1">Serial: {{ device.serial_number }}</p>
+                        <p class="mb-1">Android Version: {{device.versi_andro}}</p>
                       {% else %}
-                        <p class="text-danger">No device connected</p>
+                        <p class="mb-1">Device: <i class="bi bi-apple text-dark"></i> {{ device.model }}</p>
+                        <p class="mb-1">UDID: {{ device.UDID }}</p>
                       {% endif %}
-                    </div>
-                    <div class="col-4 text-end">
-                      <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
-                    </div>
-                  </div>
-        
-                  <div class="mb-3">
-                    <label for="search-packages" class="form-label">Search Packages</label>
-                    <div class="input-group">
-                      <span class="input-group-text"><i class="bi bi-search"></i></span>
-                      <input name="search-packages" type="text" class="form-control" id="searchInput" oninput="filterOptions()" placeholder="Search for package...">
-                    </div>
-                  </div>
-                  <div class="row g-3">
-                    <div class="col-md-6">
-                      <label for="packageSelect" class="form-label">Select Package</label>
-                      <select name="package" id="packageSelect" class="form-select" required>
-                        {% if identifiers %}
-                          {% for identifier in identifiers %}
-                            <option value="{{ identifier.split()[2] }}">{{ identifier }}</option>
-                          {% endfor %}
-                        {% else %}
-                          <option disabled>No packages detected. Connect your USB device and run Frida Server.</option>
-                        {% endif %}
-                      </select>
-                    </div>
-          
-                    <div class="col-md-6">
-                      <label for="selected_script" class="form-label">Select Bypass Script</label>
-                      <select name="selected_script" id="selectedScript" class="form-select">
-                        <optgroup label="Android Scripts" data-directory="Script Directory 1">
-                          {% for script in bypass_scripts_android %}
-                            <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
-                          {% endfor %}
-                        </optgroup>
-                        <optgroup label="iOS Scripts" data-directory="Script Directory 2">
-                          {% for script in bypass_scripts_ios %}
-                            <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
-                          {% endfor %}
-                        </optgroup>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="mb-3">
-                    <br>
-                    <label for="script_content" class="form-label">Script Content</label>
-                    <textarea class="form-control" name="script_content" id="scriptContent" rows="5" placeholder="Script Content" style="height: 195px;"></textarea>
-                  </div>
-        
-                  <div class="d-flex justify-content-between align-items-center">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" value="0" name="use_custom_script" id="customScriptCheckbox" onchange="toggleCustomScript()">
-                      <label class="form-check-label" for="use_custom_script">
-                        Use Custom Script
-                      </label>
-                    </div>
-                    <div>
-                      <button type="button" class="btn btn-primary" id="runBtn">
-                        <i class="bi bi-play-fill"></i> Run Frida
-                      </button>
-                      <button type="button" class="btn btn-outline-danger" id="stopBtn">
-                        <i class="bi bi-stop-fill"></i> Stop
-                      </button>
-                    </div>
-                  </div>
-                </form>
+                    {% endfor %}
+                  {% else %}
+                    <p class="text-danger">No device connected</p>
+                  {% endif %}
+                </div>
+                <div class="col-4 text-end">
+                  <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
+                </div>
               </div>
+              
+              <!-- Frida Server Status -->
+              <div class="mb-3">
+                <h3 class="h6 fw-bold text-dark"><i class="bi bi-server"></i> Frida Server Status</h3>
+                {% if frida_status %}
+                  {% for device_id, status in frida_status.items() %}
+                    <div class="card border-0 bg-light mb-2">
+                      <div class="card-body p-2">
+                        <div class="row align-items-center">
+                          <div class="col-8">
+                            <small class="text-muted">
+                              {% if "device_id" in status.device_info %}
+                                <i class="bi bi-android text-success"></i> {{ status.device_info.model }}
+                              {% else %}
+                                <i class="bi bi-apple text-dark"></i> {{ status.device_info.model }}
+                              {% endif %}
+                            </small>
+                            <div class="d-flex align-items-center mt-1">
+                              <span class="badge {% if status.installed %}bg-success{% else %}bg-warning{% endif %} me-2">
+                                <i class="bi {% if status.installed %}bi-check-circle{% else %}bi-exclamation-triangle{% endif %}"></i>
+                                {% if status.installed %}
+                                  {% if status.frida_server_name %}{{ status.frida_server_name }}{% else %}Installed{% endif %}
+                                {% else %}Not Installed{% endif %}
+                              </span>
+                              <span class="badge {% if status.running %}bg-success{% else %}bg-danger{% endif %}">
+                                <i class="bi {% if status.running %}bi-play-circle{% else %}bi-stop-circle{% endif %}"></i>
+                                {% if status.running %}Running{% else %}Stopped{% endif %}
+                              </span>
+                            </div>
+                          </div>
+                          <div class="col-4 text-end">
+                            {% if "device_id" in status.device_info %}
+                              {% if not status.running %}
+                                <div class="d-flex flex-column gap-1">
+                                  <button class="btn btn-sm btn-success start-frida-server" data-device-id="{{ device_id }}">
+                                    <i class="bi bi-play-fill"></i> Start
+                                  </button>
+                                  <div class="form-check form-check-sm">
+                                    <input class="form-check-input force-download-checkbox" type="checkbox" id="force-download-{{ device_id }}">
+                                    <label class="form-check-label small" for="force-download-{{ device_id }}">
+                                      Force Download
+                                    </label>
+                                  </div>
+                                </div>
+                              {% else %}
+                                <button class="btn btn-sm btn-danger stop-frida-server" data-device-id="{{ device_id }}">
+                                  <i class="bi bi-stop-fill"></i> Stop
+                                </button>
+                              {% endif %}
+                            {% else %}
+                              <span class="text-muted small">iOS - No Server Needed</span>
+                            {% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <small>No devices connected or Frida server status unavailable</small>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <label for="search-packages" class="form-label">Search Packages</label>
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <input name="search-packages" type="text" class="form-control" id="searchInput" oninput="filterOptions()" placeholder="Search for package...">
+                </div>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label for="packageSelect" class="form-label">Select Package</label>
+                  <select name="package" id="packageSelect" class="form-select" required>
+                    <option disabled selected>Loading packages...</option>
+                  </select>
+                  <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadPackages()">
+                      <i class="bi bi-arrow-clockwise"></i> Refresh Packages
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning ms-2" onclick="restartFridaServer()">
+                      <i class="bi bi-arrow-clockwise"></i> Restart Frida Server
+                    </button>
+                    <small class="text-muted d-block mt-1">Start Frida Server first, then click Refresh. Use Restart if packages don't load.</small>
+                  </div>
+                </div>
+      
+                <div class="col-md-6">
+                  <label for="selected_script" class="form-label">Select Bypass Script</label>
+                  <select name="selected_script" id="selectedScript" class="form-select">
+                    <optgroup label="Android Scripts" data-directory="Script Directory 1">
+                      {% for script in bypass_scripts_android %}
+                        <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
+                      {% endfor %}
+                    </optgroup>
+                    <optgroup label="iOS Scripts" data-directory="Script Directory 2">
+                      {% for script in bypass_scripts_ios %}
+                        <option value="{{ script['file_name'] }}">{{ script['description'] }} - {{ script['file_name'] }}</option>
+                      {% endfor %}
+                    </optgroup>
+                  </select>
+                </div>
+              </div>
+              <br>
+              <!-- frida codeshare search -->
+              <div class="mb-3">
+                <label for="codeshareSearchInput" class="form-label">Search Frida Codeshare Script</label>
+                <input type="text" class="form-control" id="codeshareSearchInput" placeholder="Search Frida script..." autocomplete="off">
+                                
+                <div class="modal fade" id="codeshareResultsModal" tabindex="-1" aria-labelledby="codeshareResultsLabel" aria-hidden="true">
+                  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                      <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">Search Frida Codeshare Script</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body">
+                        <input type="text" id="modalSearchInput" class="form-control mb-3" placeholder="Search in modal...">
+                        <div id="modalResults"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label for="script_content" class="form-label">Script Content</label>
+                <textarea class="form-control" name="script_content" id="scriptContent" rows="5" placeholder="Script Content" style="height: 150px;"></textarea>
+              </div>
+    
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="0" name="use_custom_script" id="customScriptCheckbox" onchange="toggleCustomScript()">
+                  <label class="form-check-label" for="use_custom_script">
+                    Use Custom Script
+                  </label>
+                </div>
+                <div>
+                  <button type="button" class="btn btn-primary" id="runBtn">
+                    <i class="bi bi-play-fill"></i> Run Frida
+                  </button>
+                  <button type="button" class="btn btn-outline-danger" id="stopBtn">
+                    <i class="bi bi-stop-fill"></i> Stop
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="col-lg-6">
+      <div class="terminal-fsr mb-3" style="height: 300px;">
+        <div class="head-terminal">
+          <div class="row g-0 align-items-center">
+            <div class="col-auto">
+              <div class="d-flex flex-row">
+                <div class="circle-red"></div>
+                <div class="circle-yellow"></div>
+                <div class="circle-green"></div>
+              </div>
+            </div>
+            <div class="col title-fsr ps-2">
+              <span>FSR Logs</span>
+            </div>
+            <div class="col-auto">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearFSRLogs()">
+                <i class="bi bi-trash"></i> Clear
+              </button>
             </div>
           </div>
         </div>
-        
-        <div class="col-lg-6">
-          <div class="terminal-fsr mb-3" style="height: 300px;">
-            <div class="head-terminal">
-              <div class="row g-0 align-items-center">
-                <div class="col-auto">
-                  <div class="d-flex flex-row">
-                    <div class="circle-red"></div>
-                    <div class="circle-yellow"></div>
-                    <div class="circle-green"></div>
-                  </div>
-                </div>
-                <div class="col title-fsr ps-2">
-                  <span>FSR Logs</span>
-                </div>
-              </div>
-            </div>
-            <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
-              <div class="cli-content p-2" id="outputContainer">
-              </div>
-            </div>
-          </div>
-          
-          <div class="terminal-fsr" style="height: 400px;">
-            <div class="head-terminal">
-              <div class="row g-0 align-items-center">
-                <div class="col-auto">
-                  <div class="d-flex flex-row">
-                    <div class="circle-red"></div>
-                    <div class="circle-yellow"></div>
-                    <div class="circle-green"></div>
-                  </div>
-                </div>
-                <div class="col title-fsr ps-2">
-                  <span>Frida Logs</span>
-                </div>
-              </div>
-            </div>
-            <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
-              <div class="cli-content-terminal p-2" id="clearOutput">
-                <p class="wraptext mb-0" id="outputFrida"></p>
-                <div id="output-list"></div>
-              </div>
-            </div>
+        <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
+          <div class="cli-content p-2" id="outputContainer">
           </div>
         </div>
       </div>
       
-      <div class="footer">
-        <a class="credit" href="https://secrash.com" target="_blank"><span>2025 © Secrash</span></a>
+      <div class="terminal-fsr" style="height: 400px;">
+        <div class="head-terminal">
+          <div class="row g-0 align-items-center">
+            <div class="col-auto">
+              <div class="d-flex flex-row">
+                <div class="circle-red"></div>
+                <div class="circle-yellow"></div>
+                <div class="circle-green"></div>
+              </div>
+            </div>
+            <div class="col title-fsr ps-2">
+              <span>Frida Logs</span>
+            </div>
+          </div>
+        </div>
+        <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
+          <div class="cli-content-terminal p-2" id="clearOutput">
+            <p class="wraptext mb-0" id="outputFrida"></p>
+            <div id="output-list"></div>
+          </div>
+        </div>
       </div>
     </div>
-    
-    <div class="wave"></div>
-    <div class="wave"></div>
-    <div class="wave"></div>
-    
-    <script src="../static/custom.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-      crossorigin="anonymous"></script>
-  </body>
-</html>
+  </div>
+  
+  <div class="footer">
+    <a class="credit" href="https://secrash.com" target="_blank"><span>2025 © Secrash</span></a>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/custom.js') }}"></script>
+
+{% endblock %}
