@@ -178,13 +178,66 @@ def suggest_frida_fixes(device_id, architecture):
     log_to_fsr_logs(f"[TROUBLESHOOTING] 8. Then restart Frida server")
       
 # adb status and connect
-def run_adb_command(command, timeout=5):
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+def run_adb_command(command, timeout=5, retries=1):
+    """Run ADB command with retry mechanism and configurable timeout"""
+    for attempt in range(retries + 1):
+        try:
+            log_to_fsr_logs(f"[DEBUG] ADB command attempt {attempt + 1}/{retries + 1}: {' '.join(command)}")
+            result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+            return result.stdout
+        except subprocess.TimeoutExpired as e:
+            if attempt < retries:
+                log_to_fsr_logs(f"[WARNING] ADB command timed out (attempt {attempt + 1}), retrying...")
+                import time
+                time.sleep(2)  # Wait before retry
+            else:
+                log_to_fsr_logs(f"[ERROR] ADB command timed out after {retries + 1} attempts: {' '.join(command)}")
+                raise e
+        except subprocess.CalledProcessError as e:
+            if attempt < retries:
+                log_to_fsr_logs(f"[WARNING] ADB command failed (attempt {attempt + 1}), retrying...")
+                import time
+                time.sleep(2)  # Wait before retry
+            else:
+                log_to_fsr_logs(f"[ERROR] ADB command failed after {retries + 1} attempts: {' '.join(command)}")
+                return f"Error: ADB command failed. {e}"
+        except Exception as e:
+            log_to_fsr_logs(f"[ERROR] Unexpected error in ADB command: {e}")
+            return f"Error: ADB command failed. {e}"
+    
+    return f"Error: ADB command failed after {retries + 1} attempts"
 
-        return result.stdout
-    except subprocess.CalledProcessError as e:
-        return f"Error: ADB command failed. {e}"
+def run_adb_push_command(device_id, local_path, remote_path, timeout=30, retries=2):
+    """Specialized function for ADB push with longer timeout and more retries"""
+    command = ["adb", "-s", device_id, "push", local_path, remote_path]
+    
+    for attempt in range(retries + 1):
+        try:
+            log_to_fsr_logs(f"[DEBUG] ADB push attempt {attempt + 1}/{retries + 1}: {local_path} -> {remote_path}")
+            result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+            log_to_fsr_logs(f"[DEBUG] ADB push successful: {result.stdout.strip()}")
+            return result.stdout
+        except subprocess.TimeoutExpired as e:
+            if attempt < retries:
+                log_to_fsr_logs(f"[WARNING] ADB push timed out (attempt {attempt + 1}), retrying in 5 seconds...")
+                import time
+                time.sleep(5)  # Longer wait for push operations
+            else:
+                log_to_fsr_logs(f"[ERROR] ADB push timed out after {retries + 1} attempts")
+                raise e
+        except subprocess.CalledProcessError as e:
+            if attempt < retries:
+                log_to_fsr_logs(f"[WARNING] ADB push failed (attempt {attempt + 1}), retrying in 5 seconds...")
+                import time
+                time.sleep(5)
+            else:
+                log_to_fsr_logs(f"[ERROR] ADB push failed after {retries + 1} attempts: {e.stderr}")
+                raise e
+        except Exception as e:
+            log_to_fsr_logs(f"[ERROR] Unexpected error in ADB push: {e}")
+            raise e
+    
+    raise Exception(f"ADB push failed after {retries + 1} attempts")
     
 
 def run_ideviceinfo(timeout=5):
@@ -252,7 +305,9 @@ def get_frida_server_url(architecture, version=None):
 
 def frida_server_installed(device_id):
     try:
-        result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"])
+        # Use longer timeout for emulators
+        timeout = 15 if "emulator" in device_id else 5
+        result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"], timeout=timeout)
         # Check for any frida-server file (with version or without)
         frida_files = [line for line in result.split('\n') if 'frida-server' in line]
         if frida_files:
@@ -268,7 +323,8 @@ def clean_frida_server_files(device_id):
         log_to_fsr_logs(f"[DEBUG] Cleaning all Frida server files from device...")
         
         # Get list of all frida-server files
-        result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"])
+        timeout = 15 if "emulator" in device_id else 5
+        result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"], timeout=timeout)
         frida_files = [line.strip() for line in result.split('\n') if 'frida-server' in line]
         
         if frida_files:
@@ -298,37 +354,50 @@ def clean_frida_server_files(device_id):
 
 def is_frida_server_running(device_id):
     try:
-        # Method 1: Check process list and verify root user (works on both Android and iOS)
-        result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
+        log_to_fsr_logs(f"[DEBUG] Checking if Frida server is running on device: {device_id}")
+        
+        # Use longer timeout for emulators
+        timeout = 15 if "emulator" in device_id else 5
+        
+        # Method 1: Check process list (most reliable) - REQUIRED
+        result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"], timeout=timeout)
         if "frida-server" in result:
-            log_to_fsr_logs(f"[DEBUG] Frida server found in process list")
+            log_to_fsr_logs(f"[DEBUG] ✓ Frida server found in process list")
             
-            # Check if it's running as root
+            # Get the PID and verify it's actually frida-server
             try:
-                # Get the PID of frida-server
-                ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A", "|", "grep", "frida-server"])
+                ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
                 if ps_result:
                     lines = ps_result.strip().split('\n')
                     for line in lines:
-                        if 'frida-server' in line:
+                        if 'frida-server' in line and 'frida-server' in line.split()[-1]:  # Make sure it's actually frida-server
                             parts = line.split()
                             if len(parts) >= 2:
                                 pid = parts[1]
-                                # Check user of the process
-                                user_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-o", "user=", "-p", pid])
-                                user = user_result.strip()
-                                log_to_fsr_logs(f"[DEBUG] Frida server PID {pid} running as user: {user}")
-                                if user == "root":
-                                    log_to_fsr_logs(f"[DEBUG] ✓ Frida server running as root (correct)")
-                                    return True
+                                if pid.isdigit():
+                                    # Check user of the process
+                                    user_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-o", "user=", "-p", pid])
+                                    user = user_result.strip()
+                                    log_to_fsr_logs(f"[DEBUG] Frida server PID {pid} running as user: {user}")
+                                    if user == "root":
+                                        log_to_fsr_logs(f"[DEBUG] ✓ Frida server running as root (correct)")
+                                        return True
+                                    elif user == "shell":
+                                        log_to_fsr_logs(f"[WARNING] ⚠ Frida server running as shell (not ideal but functional)")
+                                        return True
+                                    else:
+                                        log_to_fsr_logs(f"[WARNING] ✗ Frida server running as {user} (should be root)")
+                                        return False
                                 else:
-                                    log_to_fsr_logs(f"[WARNING] ✗ Frida server running as {user} (should be root)")
-                                    return False
-            except:
-                log_to_fsr_logs(f"[DEBUG] Could not verify user, assuming running")
+                                    log_to_fsr_logs(f"[WARNING] Invalid PID format: {pid}")
+                                    return True  # Assume running if we can't parse PID
+            except Exception as e:
+                log_to_fsr_logs(f"[DEBUG] Could not verify user: {e}, assuming running")
                 return True
+        else:
+            log_to_fsr_logs(f"[DEBUG] ✗ Frida server not found in process list")
         
-        # Method 2: Try multiple port checking commands (Android-specific)
+        # Method 2: Check port 27042 (Android-specific) - REQUIRED
         port_check_commands = [
             ["adb", "-s", device_id, "shell", "netstat", "-tunlp"],
             ["adb", "-s", device_id, "shell", "ss", "-tunlp"],
@@ -338,34 +407,25 @@ def is_frida_server_running(device_id):
         
         for cmd in port_check_commands:
             try:
-                result = run_adb_command(cmd, timeout=3)
-                if "27042" in result:
-                    log_to_fsr_logs(f"[DEBUG] Frida server found listening on port 27042 using {cmd[-1]}")
+                result = run_adb_command(cmd, timeout=timeout)
+                if "27042" in result and "frida" in result:
+                    log_to_fsr_logs(f"[DEBUG] ✓ Frida server found listening on port 27042 using {cmd[-1]}")
                     return True
             except:
                 continue
         
-        # Method 3: Try to connect to Frida server using frida-ps (universal)
-        try:
-            result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and "PID" in result.stdout:
-                log_to_fsr_logs(f"[DEBUG] Frida server responding to frida-ps")
-                return True
-        except:
-            pass
+        log_to_fsr_logs(f"[DEBUG] ✗ Frida server not listening on port 27042")
         
-        # Method 4: Try frida-ps with device specification
-        try:
-            result = subprocess.run(['frida-ps', '-U', '-D', device_id], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and "PID" in result.stdout:
-                log_to_fsr_logs(f"[DEBUG] Frida server responding to frida-ps with device spec")
-                return True
-        except:
-            pass
-        
-        log_to_fsr_logs(f"[DEBUG] Frida server not detected by any method")
+        # If both process list and port check fail, server is NOT running
+        log_to_fsr_logs(f"[DEBUG] ✗ Frida server not detected by process list or port check")
+        log_to_fsr_logs(f"[DEBUG] ✗ Server is NOT running (ignoring frida-ps results)")
         return False
-    except subprocess.CalledProcessError:
+        
+    except subprocess.CalledProcessError as e:
+        log_to_fsr_logs(f"[ERROR] Error checking Frida server status: {e}")
+        return False
+    except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Unexpected error checking Frida server status: {e}")
         return False
 
 def download_and_push_frida(architecture, os_type, version=None):
@@ -982,14 +1042,21 @@ def frida_server_status():
         for device in adb_check["available_devices"]:
             if "device_id" in device:  # Android device
                 device_id = device["device_id"]
+                log_to_fsr_logs(f"[DEBUG] Checking status for Android device: {device_id}")
                 installed_status = frida_server_installed(device_id)
+                running_status = is_frida_server_running(device_id)
+                
                 status_info[device_id] = {
                     "installed": bool(installed_status),  # Convert to boolean
                     "frida_server_name": installed_status if installed_status else None,
-                    "running": is_frida_server_running(device_id),
+                    "running": running_status,
                     "device_info": device
                 }
+                
+                log_to_fsr_logs(f"[DEBUG] Device {device_id} status - Installed: {bool(installed_status)}, Running: {running_status}")
+                
             elif "UDID" in device:  # iOS device
+                log_to_fsr_logs(f"[DEBUG] Checking status for iOS device: {device['UDID']}")
                 status_info[device["UDID"]] = {
                     "installed": True,
                     "frida_server_name": None,
@@ -997,9 +1064,20 @@ def frida_server_status():
                     "device_info": device
                 }
         
+        log_to_fsr_logs(f"[DEBUG] Final status info: {status_info}")
         return jsonify(status_info)
     except Exception as e:
         log_to_fsr_logs(f"[ERROR] Exception in frida_server_status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/force-refresh-status', methods=['POST'])
+def force_refresh_status():
+    """Force refresh Frida server status"""
+    try:
+        log_to_fsr_logs(f"[DEBUG] Force refresh status requested")
+        return frida_server_status()
+    except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Exception in force_refresh_status: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/start-frida-server', methods=['POST'])
@@ -1096,39 +1174,102 @@ def start_frida_server():
                 if os.path.exists(download_path):
                     os.remove(download_path)
                 
-                # Push to device
+                # Push to device with retry mechanism
                 log_to_fsr_logs(f"[DEBUG] Pushing Frida server to device...")
                 run_adb_command(["adb", "-s", device_id, "root"])
-                run_adb_command(["adb", "-s", device_id, "push", frida_server_path, "/data/local/tmp/"])
-                run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", f"/data/local/tmp/{frida_server_name}"])
-                log_to_fsr_logs(f"[DEBUG] Frida server pushed and chmod successfully")
+                
+                try:
+                    run_adb_push_command(device_id, frida_server_path, f"/data/local/tmp/{frida_server_name}")
+                    run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", f"/data/local/tmp/{frida_server_name}"])
+                    log_to_fsr_logs(f"[DEBUG] Frida server pushed and chmod successfully")
+                except Exception as e:
+                    log_to_fsr_logs(f"[ERROR] Failed to push Frida server: {e}")
+                    return jsonify({"error": f"Failed to push Frida server to device: {str(e)}"}), 500
             else:
                 log_to_fsr_logs(f"[DEBUG] Using existing Frida server: {frida_server_name}")
             
             log_to_fsr_logs(f"[DEBUG] Checking if Frida server is running...")
-            if not is_frida_server_running(device_id):
+            server_running = is_frida_server_running(device_id)
+            
+            # If server is running but as shell user, we should restart it as root
+            if server_running:
+                # Check if it's running as shell (not ideal)
+                try:
+                    ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
+                    if ps_result:
+                        lines = ps_result.strip().split('\n')
+                        for line in lines:
+                            if 'frida-server' in line and 'frida-server' in line.split()[-1]:
+                                parts = line.split()
+                                if len(parts) >= 2:
+                                    pid = parts[1]
+                                    if pid.isdigit():
+                                        user_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-o", "user=", "-p", pid])
+                                        user = user_result.strip()
+                                        if user == "shell":
+                                            log_to_fsr_logs(f"[DEBUG] Server running as shell, restarting as root...")
+                                            # Stop the shell server first
+                                            run_adb_command(["adb", "-s", device_id, "shell", "kill", pid])
+                                            time.sleep(2)
+                                            server_running = False
+                                            break
+                except:
+                    pass
+            
+            if not server_running:
                 log_to_fsr_logs(f"[DEBUG] Starting Frida server in root shell...")
                 run_adb_command(["adb", "-s", device_id, "root"])
-                # Start Frida server in root shell with no timeout
+                
+                # Method 1: Try with su command to ensure root execution
                 try:
-                    subprocess.run(["adb", "-s", device_id, "shell", f"/data/local/tmp/{frida_server_name}", "&"], 
+                    log_to_fsr_logs(f"[DEBUG] Method 1: Starting with su command...")
+                    subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", f"/data/local/tmp/{frida_server_name} &"], 
                                  timeout=10, capture_output=True)
-                    log_to_fsr_logs(f"[DEBUG] Frida server start command executed")
+                    log_to_fsr_logs(f"[DEBUG] su command executed")
                     
                     # Wait a moment for server to start
                     import time
                     time.sleep(3)
                     
-                    # Check if server is now running
+                    # Check if server is now running as root
                     if is_frida_server_running(device_id):
-                        log_to_fsr_logs(f"[DEBUG] Frida server started successfully in root shell")
+                        log_to_fsr_logs(f"[DEBUG] ✓ Frida server started successfully as root")
                     else:
-                        log_to_fsr_logs(f"[DEBUG] Frida server may still be starting up...")
+                        log_to_fsr_logs(f"[DEBUG] su method failed, trying alternative...")
+                        
+                        # Method 2: Try with direct root shell
+                        try:
+                            log_to_fsr_logs(f"[DEBUG] Method 2: Starting with direct root shell...")
+                            subprocess.run(["adb", "-s", device_id, "shell", "su", "root", f"/data/local/tmp/{frida_server_name} &"], 
+                                         timeout=10, capture_output=True)
+                            log_to_fsr_logs(f"[DEBUG] su root command executed")
+                            time.sleep(3)
+                            
+                            if is_frida_server_running(device_id):
+                                log_to_fsr_logs(f"[DEBUG] ✓ Frida server started successfully with su root")
+                            else:
+                                log_to_fsr_logs(f"[DEBUG] su root method failed, trying basic method...")
+                                
+                                # Method 3: Basic method (fallback)
+                                subprocess.run(["adb", "-s", device_id, "shell", f"/data/local/tmp/{frida_server_name} &"], 
+                                             timeout=10, capture_output=True)
+                                log_to_fsr_logs(f"[DEBUG] Basic method executed")
+                                time.sleep(3)
+                                
+                                if is_frida_server_running(device_id):
+                                    log_to_fsr_logs(f"[DEBUG] ✓ Frida server started with basic method")
+                                else:
+                                    log_to_fsr_logs(f"[WARNING] All start methods failed")
+                                    
+                        except subprocess.TimeoutExpired:
+                            log_to_fsr_logs(f"[DEBUG] su root method timed out")
+                        except Exception as e:
+                            log_to_fsr_logs(f"[ERROR] Error with su root method: {e}")
                         
                 except subprocess.TimeoutExpired:
-                    log_to_fsr_logs(f"[DEBUG] Frida server start command timed out, but server may still be starting")
+                    log_to_fsr_logs(f"[DEBUG] su method timed out")
                 except Exception as e:
-                    log_to_fsr_logs(f"[ERROR] Error starting Frida server: {e}")
+                    log_to_fsr_logs(f"[ERROR] Error with su method: {e}")
             else:
                 log_to_fsr_logs(f"[DEBUG] Frida server already running")
             
@@ -1163,19 +1304,65 @@ def stop_frida_server():
         if not device_id:
             return jsonify({"error": "Device ID is required"}), 400
         
-        # For Android devices, kill the Frida server process
+        log_to_fsr_logs(f"[DEBUG] Stopping Frida server for device: {device_id}")
+        
+        # For Android devices, kill the Frida server process more aggressively
         try:
-            result = run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
-            log_to_fsr_logs(f"[DEBUG] Frida server stop command executed")
-            return jsonify({
-                "success": True,
-                "message": "Frida server stopped successfully",
-                "device_id": device_id
-            })
+            # Method 1: Try pkill first
+            run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
+            log_to_fsr_logs(f"[DEBUG] pkill command executed")
+            
+            # Wait a moment
+            import time
+            time.sleep(2)
+            
+            # Method 2: If still running, try killall
+            if is_frida_server_running(device_id):
+                log_to_fsr_logs(f"[DEBUG] Server still running, trying killall")
+                run_adb_command(["adb", "-s", device_id, "shell", "killall", "frida-server"])
+                time.sleep(1)
+            
+            # Method 3: If still running, try to find and kill frida-server by specific PID in root shell
+            if is_frida_server_running(device_id):
+                log_to_fsr_logs(f"[DEBUG] Frida server still running, trying PID-based kill in root shell")
+                ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
+                if ps_result:
+                    lines = ps_result.strip().split('\n')
+                    for line in lines:
+                        if 'frida-server' in line and 'frida-server' in line.split()[-1]:  # Make sure it's actually frida-server
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                pid = parts[1]
+                                if pid.isdigit():
+                                    log_to_fsr_logs(f"[DEBUG] Found frida-server PID: {pid}, killing in root shell")
+                                    # Kill specific frida-server PID in root shell
+                                    run_adb_command(["adb", "-s", device_id, "root"])
+                                    run_adb_command(["adb", "-s", device_id, "shell", "su", "-c", f"kill -9 {pid}"])
+                                    log_to_fsr_logs(f"[DEBUG] Sent kill -9 {pid} to frida-server in root shell")
+                                    break
+            
+            # Final check
+            if is_frida_server_running(device_id):
+                log_to_fsr_logs(f"[WARNING] Frida server may still be running")
+                return jsonify({
+                    "success": False,
+                    "message": "Frida server may still be running",
+                    "device_id": device_id
+                }), 500
+            else:
+                log_to_fsr_logs(f"[DEBUG] Frida server stopped successfully")
+                return jsonify({
+                    "success": True,
+                    "message": "Frida server stopped successfully",
+                    "device_id": device_id
+                })
+                
         except Exception as e:
+            log_to_fsr_logs(f"[ERROR] Error stopping Frida server: {e}")
             return jsonify({"error": f"Failed to stop Frida server: {str(e)}"}), 500
             
     except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Exception in stop_frida_server: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/restart-frida-server', methods=['POST'])
@@ -1297,11 +1484,17 @@ def start_frida_server_with_force_download(device_id):
             if os.path.exists(download_path):
                 os.remove(download_path)
             
-            # Push to device with clean filename
+            # Push to device with clean filename and retry mechanism
             log_to_fsr_logs(f"[DEBUG] Pushing new Frida server to device...")
             run_adb_command(["adb", "-s", device_id, "root"])
-            run_adb_command(["adb", "-s", device_id, "push", frida_server_path, "/data/local/tmp/frida-server"])
-            run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", "/data/local/tmp/frida-server"])
+            
+            try:
+                run_adb_push_command(device_id, frida_server_path, "/data/local/tmp/frida-server")
+                run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", "/data/local/tmp/frida-server"])
+                log_to_fsr_logs(f"[DEBUG] New Frida server pushed and chmod successfully")
+            except Exception as e:
+                log_to_fsr_logs(f"[ERROR] Failed to push new Frida server: {e}")
+                return jsonify({"error": f"Failed to push Frida server to device: {str(e)}"}), 500
             
             # Start server in proper root shell
             log_to_fsr_logs(f"[DEBUG] Starting new Frida server in root shell...")
