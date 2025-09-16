@@ -17,6 +17,8 @@ import requests
 import shutil
 import lzma
 import wget
+import tempfile
+import subprocess
 
 sys.tracebacklimit = 0
 
@@ -28,7 +30,23 @@ args = parser.parse_args()
 app = Flask(__name__)
 socketio = SocketIO(app)
 process = None
+frida_output_buffer = []
+current_script_path = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
+
+# Claude CLI and MCP Configuration
+GHIDRA_MCP_PATH = "D:/Irvan/Work/MCP/GhidraMCPFrida/bridge_mcp_ghidra.py"
+GHIDRA_SERVER_URL = "http://127.0.0.1:8080/"
+
+# For Docker environment, call host's Claude CLI
+if os.path.exists("/.dockerenv"):
+    # Inside Docker - create a simple HTTP bridge to host's Claude CLI
+    CLAUDE_CLI_COMMAND = None  # Will use HTTP bridge
+    CLAUDE_HOST_URL = "http://host.docker.internal:8090"  # Bridge service
+else:
+    # Native environment - also use HTTP bridge to avoid CLI compatibility issues
+    CLAUDE_CLI_COMMAND = None  # Will use HTTP bridge
+    CLAUDE_HOST_URL = "http://localhost:8090"  # Bridge service on same machine
 
 def log_to_fsr_logs(message):
     """Send debug message to FSR Logs on web interface"""
@@ -96,11 +114,11 @@ def check_frida_versions():
     """Check Frida client and server versions for compatibility"""
     try:
         # Get Frida client version
-        client_result = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=5)
+        client_result = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=600)
         client_version = client_result.stdout.strip() if client_result.returncode == 0 else "Unknown"
         
         # Try to get server version
-        server_result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=5)
+        server_result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=600)
         server_version = "Unknown"
         
         if server_result.returncode == 0 and server_result.stdout:
@@ -163,9 +181,9 @@ def suggest_frida_fixes(device_id, architecture):
                     log_to_fsr_logs(f"[DEBUG] Recent available versions: {', '.join(available_versions)}")
                     
                     if client_version in available_versions:
-                        log_to_fsr_logs(f"[DEBUG] ✓ Version {client_version} is available")
+                        log_to_fsr_logs(f"[DEBUG] [OK] Version {client_version} is available")
                     else:
-                        log_to_fsr_logs(f"[WARNING] ✗ Version {client_version} not found in recent releases")
+                        log_to_fsr_logs(f"[WARNING] [X] Version {client_version} not found in recent releases")
                         log_to_fsr_logs(f"[DEBUG] Will use latest version instead")
             except:
                 log_to_fsr_logs(f"[WARNING] Could not check available versions")
@@ -362,7 +380,7 @@ def is_frida_server_running(device_id):
         # Method 1: Check process list (most reliable) - REQUIRED
         result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"], timeout=timeout)
         if "frida-server" in result:
-            log_to_fsr_logs(f"[DEBUG] ✓ Frida server found in process list")
+            log_to_fsr_logs(f"[DEBUG] [OK] Frida server found in process list")
             
             # Get the PID and verify it's actually frida-server
             try:
@@ -380,13 +398,13 @@ def is_frida_server_running(device_id):
                                     user = user_result.strip()
                                     log_to_fsr_logs(f"[DEBUG] Frida server PID {pid} running as user: {user}")
                                     if user == "root":
-                                        log_to_fsr_logs(f"[DEBUG] ✓ Frida server running as root (correct)")
+                                        log_to_fsr_logs(f"[DEBUG] [OK] Frida server running as root (correct)")
                                         return True
                                     elif user == "shell":
-                                        log_to_fsr_logs(f"[WARNING] ⚠ Frida server running as shell (not ideal but functional)")
+                                        log_to_fsr_logs(f"[WARNING] [WARN] Frida server running as shell (not ideal but functional)")
                                         return True
                                     else:
-                                        log_to_fsr_logs(f"[WARNING] ✗ Frida server running as {user} (should be root)")
+                                        log_to_fsr_logs(f"[WARNING] [X] Frida server running as {user} (should be root)")
                                         return False
                                 else:
                                     log_to_fsr_logs(f"[WARNING] Invalid PID format: {pid}")
@@ -395,7 +413,7 @@ def is_frida_server_running(device_id):
                 log_to_fsr_logs(f"[DEBUG] Could not verify user: {e}, assuming running")
                 return True
         else:
-            log_to_fsr_logs(f"[DEBUG] ✗ Frida server not found in process list")
+            log_to_fsr_logs(f"[DEBUG] [X] Frida server not found in process list")
         
         # Method 2: Check port 27042 (Android-specific) - REQUIRED
         port_check_commands = [
@@ -409,16 +427,16 @@ def is_frida_server_running(device_id):
             try:
                 result = run_adb_command(cmd, timeout=timeout)
                 if "27042" in result and "frida" in result:
-                    log_to_fsr_logs(f"[DEBUG] ✓ Frida server found listening on port 27042 using {cmd[-1]}")
+                    log_to_fsr_logs(f"[DEBUG] [OK] Frida server found listening on port 27042 using {cmd[-1]}")
                     return True
             except:
                 continue
         
-        log_to_fsr_logs(f"[DEBUG] ✗ Frida server not listening on port 27042")
+        log_to_fsr_logs(f"[DEBUG] [X] Frida server not listening on port 27042")
         
         # If both process list and port check fail, server is NOT running
-        log_to_fsr_logs(f"[DEBUG] ✗ Frida server not detected by process list or port check")
-        log_to_fsr_logs(f"[DEBUG] ✗ Server is NOT running (ignoring frida-ps results)")
+        log_to_fsr_logs(f"[DEBUG] [X] Frida server not detected by process list or port check")
+        log_to_fsr_logs(f"[DEBUG] [X] Server is NOT running (ignoring frida-ps results)")
         return False
         
     except subprocess.CalledProcessError as e:
@@ -959,7 +977,7 @@ def get_packages():
 
 @app.route('/run-frida', methods=['POST'])
 def run_frida():
-    global process
+    global process, current_script_path
 
     try:
         package = request.form['package']
@@ -971,14 +989,27 @@ def run_frida():
         selected_script = request.form['selected_script']
         script_content = request.form['script_content']
 
-        if use_custom_script:
+        # Handle custom scripts or auto-generated scripts
+        is_auto_generated = (selected_script == "auto_generate")
+        
+        if use_custom_script or is_auto_generated:
             script_name = hashlib.sha256(script_content.encode()).hexdigest() + ".js"
             script_path = os.path.join("tmp", script_name)
-            selected_script = script_name
+            
             with open(script_path, 'w') as file:
                 file.write(script_content)
+            
+            if is_auto_generated:
+                log_to_fsr_logs(f"[DEBUG] Using AI-generated script: {script_name}")
+                selected_script = f"AI-Generated-{script_name}"
+            else:
+                log_to_fsr_logs(f"[DEBUG] Using custom script: {script_name}")
+                selected_script = script_name
         else:
             script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
+
+        # Track current script path for manual fixing
+        current_script_path = os.path.abspath(script_path)
 
         if process and process.poll() is None:
             process.terminate()
@@ -994,18 +1025,29 @@ def run_frida():
 
     
 def run_frida_with_socketio(script_path, package):
-    global process
+    global process, frida_output_buffer
 
     try:
+        # Initialize output buffer for manual fix feature
+        frida_output_buffer = []
+        
         command = ["frida", "-l", script_path, "-U", "-f", package]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+        
         while True:
             output = process.stdout.readline()
             if output == "" and process.poll() is not None:
                 break
             if output:
+                output_clean = output.replace('\n','')
+                frida_output_buffer.append(output_clean)
+                
+                # Keep buffer manageable (last 100 lines)
+                if len(frida_output_buffer) > 100:
+                    frida_output_buffer = frida_output_buffer[-100:]
+                
                 if args.verbose:
-                    print(output.replace('\n',''))
+                    print(output_clean)
                 socketio.emit("output", {"data": output})
                 time.sleep(0.010)
 
@@ -1029,6 +1071,71 @@ def stop_frida():
         return 'Frida process stopped', 200
     else:
         return 'Frida process is not running', 200
+
+@app.route('/fix-script', methods=['POST'])
+def fix_script():
+    """Manually fix the currently running script using AI"""
+    global process, frida_output_buffer, current_script_path
+    
+    try:
+        # Check if a script is currently running
+        if not process or process.poll() is not None:
+            return jsonify({"error": "No Frida script is currently running"}), 400
+        
+        if not current_script_path:
+            return jsonify({"error": "No script path available for fixing"}), 400
+        
+        if not os.path.exists(current_script_path):
+            return jsonify({"error": "Current script file not found"}), 400
+        
+        log_to_fsr_logs("[MANUAL-FIX] Manual script fix requested")
+        socketio.emit("output", {"data": "\n[MANUAL-FIX] Manual script fix requested, analyzing errors...\n"})
+        
+        # Extract error messages from output buffer
+        error_messages = []
+        for line in frida_output_buffer:
+            if any(error_keyword in line.lower() for error_keyword in [
+                'error:', 'exception', 'failed', 'invalid instruction', 'segmentation fault',
+                'rpc error', 'unable to load script', 'syntax error', 'reference error',
+                'type error', 'range error'
+            ]):
+                error_messages.append(line)
+        
+        if not error_messages:
+            error_messages = ["No specific errors detected - general script fixing requested"]
+        
+        # Attempt to fix the script
+        fixed_script = attempt_script_autofix(current_script_path, error_messages, frida_output_buffer[-20:])
+        
+        if fixed_script:
+            # Kill current process
+            if process and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            
+            # Save the fixed script
+            with open(current_script_path, 'w') as f:
+                f.write(fixed_script)
+            
+            socketio.emit("output", {"data": "[MANUAL-FIX] Generated fixed script, updating UI...\n"})
+            log_to_fsr_logs("[MANUAL-FIX] Successfully generated and applied fixed script")
+            
+            # Return the fixed script content so UI can update the textarea
+            return jsonify({
+                "success": True, 
+                "message": "Script fixed successfully. Updated script content - please restart manually.",
+                "fixed_script": fixed_script
+            }), 200
+        else:
+            socketio.emit("output", {"data": "[MANUAL-FIX] Could not generate fixed script. Please check manually.\n"})
+            return jsonify({"error": "Could not generate fixed script"}), 500
+            
+    except Exception as e:
+        log_to_fsr_logs(f"[MANUAL-FIX] Exception in manual fix: {str(e)}")
+        return jsonify({"error": f"Fix failed: {str(e)}"}), 500
 
 @app.route('/frida-server-status')
 def frida_server_status():
@@ -1233,7 +1340,7 @@ def start_frida_server():
                     
                     # Check if server is now running as root
                     if is_frida_server_running(device_id):
-                        log_to_fsr_logs(f"[DEBUG] ✓ Frida server started successfully as root")
+                        log_to_fsr_logs(f"[DEBUG] [OK] Frida server started successfully as root")
                     else:
                         log_to_fsr_logs(f"[DEBUG] su method failed, trying alternative...")
                         
@@ -1246,7 +1353,7 @@ def start_frida_server():
                             time.sleep(3)
                             
                             if is_frida_server_running(device_id):
-                                log_to_fsr_logs(f"[DEBUG] ✓ Frida server started successfully with su root")
+                                log_to_fsr_logs(f"[DEBUG] [OK] Frida server started successfully with su root")
                             else:
                                 log_to_fsr_logs(f"[DEBUG] su root method failed, trying basic method...")
                                 
@@ -1257,7 +1364,7 @@ def start_frida_server():
                                 time.sleep(3)
                                 
                                 if is_frida_server_running(device_id):
-                                    log_to_fsr_logs(f"[DEBUG] ✓ Frida server started with basic method")
+                                    log_to_fsr_logs(f"[DEBUG] [OK] Frida server started with basic method")
                                 else:
                                     log_to_fsr_logs(f"[WARNING] All start methods failed")
                                     
@@ -1528,7 +1635,7 @@ def start_frida_server_with_force_download(device_id):
                 
                 # Try to get server version
                 try:
-                    server_result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=5)
+                    server_result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=600)
                     if server_result.returncode == 0:
                         log_to_fsr_logs(f"[DEBUG] Server is responding to frida-ps")
                     else:
@@ -1556,12 +1663,19 @@ def check_port(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('127.0.0.1', port)) != 0
 
+def find_available_port(start_port=5000, max_attempts=100):
+    """Find an available port starting from start_port"""
+    for port in range(start_port, start_port + max_attempts):
+        if check_port(port):
+            return port
+    return None
+
 def display_banner():
     """Display the application banner with help information"""
     banner = Fore.GREEN + r"""
-                       ‸
+                       ^
                       _)\.-.
-     .-.__,___,_.-=-. )\`  ͡⇼`\_
+     .-.__,___,_.-=-. )\`  -`\_
  .-.__\__,__,__.-=-. `/  \     `\\
  {~,-~-,-~.-~,-,;;;;\ |   '--;`)/
   \-,~_-~_-,~-,(_(_(;\/   ,;/
@@ -1594,32 +1708,654 @@ def main():
         
         if not check_port(port):
             print(Fore.YELLOW + f"Port {port} is already in use!" + Fore.RESET)
-            if port == 5000:
-                alt_port = 5001
-                response = input(f"Would you like to use port {alt_port} instead? (Y/n): ").strip().lower()
-                if response == "" or response.startswith('y'):
-                    port = alt_port
-                    if not check_port(port):
-                        print(Fore.RED + f"Port {alt_port} is also in use. Please specify a different port using -p option." + Fore.RESET)
-                        sys.exit(1)
-                else:
-                    print(Fore.YELLOW + "Please try again with a different port using -p option." + Fore.RESET)
-                    sys.exit(0)
+            # Automatically find an available port
+            available_port = find_available_port(port if port != 5000 else 5001)
+            if available_port:
+                print(Fore.GREEN + f"Automatically using available port {available_port}" + Fore.RESET)
+                port = available_port
             else:
-                print(Fore.YELLOW + "Please specify a different port using -p option." + Fore.RESET)
-                sys.exit(0)
+                print(Fore.RED + "Could not find any available port. Please specify a different port using -p option." + Fore.RESET)
+                sys.exit(1)
         
         print(Fore.GREEN + f"Please Access http://127.0.0.1:{port}" + Fore.RESET)
         print("Press CTRL+C to stop this program.")
         
         logging.getLogger('werkzeug').setLevel(logging.ERROR)
-        socketio.run(app, port=port, debug=False if get_device_type() not in ['Windows','Linux'] else False)
+        socketio.run(app, port=port, debug=False if get_device_type() not in ['Windows','Linux'] else False, allow_unsafe_werkzeug=True, host='0.0.0.0')
     
     except KeyboardInterrupt:
         pass
     except Exception as e:
         print(Fore.RED + f"Error: {e}" + Fore.RESET)
-    print(Fore.CYAN + "\nThanks For Using This Tools ♡" + Fore.RESET)
+    print(Fore.CYAN + "\nThanks For Using This Tools <3" + Fore.RESET)
+
+@app.route('/generate-frida-script', methods=['POST'])
+def generate_frida_script():
+    """Generate Frida script using Claude AI with Ghidra MCP integration"""
+    try:
+        data = request.json
+        if not data or 'prompt' not in data:
+            return jsonify({'error': 'No prompt provided'}), 400
+        
+        prompt = data['prompt'].strip()
+        if not prompt:
+            return jsonify({'error': 'Empty prompt provided'}), 400
+            
+        log_to_fsr_logs(f"[DEBUG] Generating AI-powered Frida script for prompt: {prompt}")
+        
+        # Generate Frida script using Claude CLI
+        generated_script = generate_frida_script_from_prompt(prompt)
+        
+        log_to_fsr_logs(f"[DEBUG] Successfully generated AI-powered Frida script")
+        
+        return jsonify({
+            'success': True,
+            'script': generated_script,
+            'powered_by': 'Claude CLI + Ghidra MCP'
+        })
+        
+    except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Failed to generate Frida script: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to generate script: {str(e)}'
+        }), 500
+
+def generate_frida_script_from_prompt(prompt):
+    """Generate Frida script using Claude CLI with Ghidra MCP integration"""
+    
+    try:
+        # Note: Ghidra context will be obtained by Claude via MCP tools
+        ghidra_context = "Claude will obtain this data directly via MCP tools - use list_functions(), list_strings(), etc."
+        
+        # Check if Claude CLI is available
+        if not is_claude_cli_available():
+            log_to_fsr_logs("[WARNING] Claude CLI not available, using fallback templates")
+            return generate_fallback_script(prompt)
+        
+        # Create temporary files for Claude interaction
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as temp_file:
+            # Write the prompt file for Claude with strict formatting rules
+        
+            temp_file.write(prompt)
+            temp_file.flush()
+            
+            log_to_fsr_logs("[DEBUG] Calling Claude CLI for script generation...")
+            
+            # Call Claude CLI (native) or HTTP bridge (Docker)
+            try:
+                if CLAUDE_CLI_COMMAND:
+                    # Native environment - call Claude CLI directly
+                    result = subprocess.run([
+                        CLAUDE_CLI_COMMAND, 
+                        "--file", temp_file.name,
+                        "--prompt", "Generate a Frida script based on the request in this file. Return only the JavaScript code."
+                    ], 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=600,  # 5 minutes timeout
+                    cwd=os.getcwd()
+                    )
+                    
+                    if result.returncode == 0:
+                        generated_script = result.stdout.strip()
+                    else:
+                        log_to_fsr_logs(f"[ERROR] Claude CLI failed with return code {result.returncode}")
+                        log_to_fsr_logs(f"[ERROR] Claude CLI stderr: {result.stderr}")
+                        return generate_fallback_script(prompt)
+                else:
+                    # Docker environment - use HTTP bridge to host
+                    with open(temp_file.name, 'r') as f:
+                        file_content = f.read()
+                    
+                    response = requests.post(f"{CLAUDE_HOST_URL}/generate-script", 
+                                           json={"prompt": file_content}, 
+                                           timeout=600)  # 10 minutes timeout
+                    
+                    if response.status_code == 200:
+                        generated_script = response.json().get('script', '')
+                    else:
+                        log_to_fsr_logs(f"[ERROR] Claude bridge failed with status {response.status_code}")
+                        return generate_fallback_script(prompt)
+                
+                # Process the generated script
+                if generated_script:
+                    log_to_fsr_logs("[DEBUG] Claude generated Frida script successfully")
+                    cleaned_script = clean_claude_output(generated_script)
+                    return cleaned_script if cleaned_script else generate_fallback_script(prompt)
+                else:
+                    log_to_fsr_logs("[ERROR] Claude returned empty response")
+                    return generate_fallback_script(prompt)
+                    
+            except subprocess.TimeoutExpired:
+                log_to_fsr_logs("[ERROR] Claude CLI timed out")
+                return generate_fallback_script(prompt)
+            except Exception as e:
+                log_to_fsr_logs(f"[ERROR] Claude CLI execution failed: {str(e)}")
+                return generate_fallback_script(prompt)
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass
+        
+    except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Claude CLI generation failed: {str(e)}")
+        log_to_fsr_logs("[DEBUG] Falling back to template-based generation")
+        return generate_fallback_script(prompt)
+
+def is_claude_cli_available():
+    """Check if Claude CLI is available on the system"""
+    try:
+        if CLAUDE_CLI_COMMAND:
+            # Native environment - check CLI directly
+            result = subprocess.run([CLAUDE_CLI_COMMAND, "--version"], 
+                                  capture_output=True, text=True, timeout=5)
+            return result.returncode == 0
+        else:
+            # Docker environment - check if bridge is available
+            response = requests.get(f"{CLAUDE_HOST_URL}/health", timeout=5)
+            return response.status_code == 200
+    except:
+        return False
+
+def clean_claude_output(output):
+    """Clean Claude CLI output to extract just the JavaScript code"""
+    lines = output.split('\n')
+    
+    # Remove common markdown artifacts
+    cleaned_lines = []
+    in_code_block = False
+    javascript_started = False
+    
+    for line in lines:
+        # Skip markdown code block markers
+        if line.strip().startswith('```'):
+            in_code_block = not in_code_block
+            continue
+        
+        # Skip explanatory text before JavaScript code
+        if not javascript_started:
+            # Look for JavaScript indicators
+            if any(indicator in line for indicator in ['Java.perform', 'setTimeout', 'console.log', 'Interceptor.', 'Module.', 'Process.', 'Java.use']):
+                javascript_started = True
+            elif line.strip().startswith('//') or line.strip().startswith('/*'):
+                javascript_started = True
+            elif line.strip() and not any(skip_word in line.lower() for skip_word in ['perfect', 'here', 'script', 'analysis', 'findings', 'features', 'usage', 'based on']):
+                # Might be start of JS code
+                javascript_started = True
+        
+        # If we've started collecting JavaScript, include the line
+        if javascript_started:
+            # Skip obvious explanation lines
+            if any(skip_phrase in line.lower() for skip_phrase in [
+                'perfect!', 'here\'s what', 'script does:', 'key findings', 'script features:', 
+                'usage:', '## ', '# ', 'frida -u', 'the script will', 'based on'
+            ]):
+                continue
+                
+            # Skip empty lines at start
+            if not cleaned_lines and not line.strip():
+                continue
+                
+            cleaned_lines.append(line)
+    
+    # Remove trailing empty lines
+    while cleaned_lines and not cleaned_lines[-1].strip():
+        cleaned_lines.pop()
+    
+    result = '\n'.join(cleaned_lines)
+    
+    # If no valid content, return fallback
+    if not result.strip() or not any(indicator in result for indicator in ['Java.perform', 'setTimeout', 'console.log', 'Interceptor.', 'Module.']):
+        return None
+        
+    return result
+
+def call_claude_via_bridge(prompt):
+    """Call Claude CLI via HTTP bridge for Docker environment"""
+    try:
+        import requests
+        response = requests.post(f"{CLAUDE_HOST_URL}/generate-script", 
+                               json={"prompt": prompt}, 
+                               timeout=600)  # 10 minutes timeout
+        
+        if response.status_code == 200:
+            result_data = response.json()
+            return {
+                'success': result_data.get('success', False),
+                'script': result_data.get('script', ''),
+                'error': result_data.get('error', '')
+            }
+        else:
+            return {
+                'success': False,
+                'script': '',
+                'error': f'Bridge failed with status {response.status_code}'
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'script': '',
+            'error': f'Bridge request failed: {str(e)}'
+        }
+
+def attempt_script_autofix(script_path, error_messages, output_log):
+    """Attempt to fix Frida script errors using Claude Bridge and temp_generated.js"""
+
+    try:
+        log_to_fsr_logs("[AUTO-FIX] Attempting to fix script using AI via Claude Bridge...")
+
+        # Read the original failing script from temp_generated.js
+        temp_script_path = "temp_generated.js"
+        original_script = ""
+
+        if os.path.exists(temp_script_path):
+            with open(temp_script_path, 'r') as f:
+                original_script = f.read()
+            log_to_fsr_logs(f"[AUTO-FIX] Reading from temp_generated.js ({len(original_script)} chars)")
+        else:
+            # Fallback to the script_path if temp file doesn't exist
+            with open(script_path, 'r') as f:
+                original_script = f.read()
+            log_to_fsr_logs(f"[AUTO-FIX] Fallback reading from {script_path}")
+
+        # Extract recent Frida logs for context
+        error_summary = '\n'.join(error_messages[-5:]) if error_messages else "No specific errors detected"
+        output_summary = '\n'.join(output_log[-10:]) if output_log else "No additional output"
+
+        # Create minimal fix prompt - CLAUDE.md contains all the fix requirements
+        fix_prompt = f"""Fix the Frida script errors in temp_generated.js based on these error logs:
+
+Error Messages: {error_summary}
+
+Recent Output: {output_summary}
+
+Please read the current script from temp_generated.js, fix the errors, and update the file with the corrected version."""
+
+        try:
+            # Call Claude Bridge to fix the script
+            response = call_claude_via_bridge(fix_prompt)
+
+            if response and response.get('success') and response.get('script'):
+                fixed_script = response['script'].strip()
+
+                if fixed_script and len(fixed_script) > 50:
+                    # Update temp_generated.js with the fixed script
+                    with open(temp_script_path, 'w') as f:
+                        f.write(fixed_script)
+
+                    log_to_fsr_logs(f"[AUTO-FIX] Successfully generated and saved fixed script to {temp_script_path}")
+                    log_to_fsr_logs(f"[AUTO-FIX] Fixed script length: {len(fixed_script)} chars")
+
+                    return fixed_script
+                else:
+                    log_to_fsr_logs("[AUTO-FIX] Generated script appears too short or empty")
+                    return None
+            else:
+                error_msg = response.get('error', 'Unknown bridge error') if response else 'No response from bridge'
+                log_to_fsr_logs(f"[AUTO-FIX] Claude Bridge failed: {error_msg}")
+                return None
+
+        except Exception as e:
+            log_to_fsr_logs(f"[AUTO-FIX] Exception during Claude Bridge call: {str(e)}")
+            return None
+
+    except Exception as e:
+        log_to_fsr_logs(f"[AUTO-FIX] Exception in script autofix: {str(e)}")
+        return None
+
+def get_ghidra_analysis_context():
+    """Get real analysis context by executing Ghidra MCP commands directly against HTTP server"""
+    
+    try:
+        import requests
+        from urllib.parse import urljoin
+        
+        log_to_fsr_logs("[DEBUG] Connecting to Ghidra server to get real analysis context...")
+        
+        base_url = GHIDRA_SERVER_URL
+        context_parts = []
+        
+        # Get strings to find library name
+        try:
+            strings_url = urljoin(base_url, "list_strings")
+            params = {"limit": 100}  # Get more strings to find library name
+            response = requests.get(strings_url, params=params, timeout=10)
+            if response.ok:
+                strings_data = response.text.strip().split('\n')
+                
+                # Look for .so library names in strings
+                library_names = []
+                jni_functions = []
+                interesting_strings = []
+                
+                for string_line in strings_data:
+                    if string_line.strip():
+                        if '.so' in string_line and 'lib' in string_line:
+                            # Extract library name
+                            parts = string_line.split(': ')
+                            if len(parts) > 1:
+                                lib_name = parts[1].strip('"')
+                                if lib_name.endswith('.so') and lib_name not in library_names:
+                                    library_names.append(lib_name)
+                        elif 'Java_' in string_line:
+                            # Extract JNI function names
+                            parts = string_line.split(': ')
+                            if len(parts) > 1:
+                                jni_func = parts[1].strip('"')
+                                if jni_func not in jni_functions:
+                                    jni_functions.append(jni_func)
+                        elif any(keyword in string_line.lower() for keyword in ['password', 'key', 'secret', 'token', 'flag']):
+                            # Interesting strings that might be useful for hooking
+                            parts = string_line.split(': ')
+                            if len(parts) > 1:
+                                interesting_strings.append(parts[1].strip('"'))
+                
+                if library_names:
+                    context_parts.append(f"Native Libraries Found:\n" + '\n'.join(f"- {lib}" for lib in library_names))
+                
+                if jni_functions:
+                    context_parts.append(f"JNI Functions Found:\n" + '\n'.join(f"- {func}" for func in jni_functions))
+                
+                if interesting_strings:
+                    context_parts.append(f"Interesting Strings:\n" + '\n'.join(f"- {s}" for s in interesting_strings[:10]))
+                
+                log_to_fsr_logs(f"[DEBUG] Found {len(library_names)} libraries, {len(jni_functions)} JNI functions")
+                
+        except Exception as e:
+            log_to_fsr_logs(f"[WARNING] Error getting strings: {str(e)}")
+        
+        # Get function list to find native functions
+        try:
+            functions_url = urljoin(base_url, "list_functions")
+            response = requests.get(functions_url, timeout=10)
+            if response.ok:
+                functions = response.text.strip().split('\n')
+                if functions and functions[0]:
+                    # Filter for interesting functions (avoid system functions)
+                    native_functions = []
+                    for func in functions[:20]:  # Limit to first 20
+                        if func.strip() and not any(sys_func in func.lower() for sys_func in ['__', '_init', '_fini', 'frame_dummy']):
+                            native_functions.append(func.strip())
+                    
+                    if native_functions:
+                        context_parts.append(f"Native Functions Found:\n" + '\n'.join(f"- {func}" for func in native_functions[:10]))
+                    log_to_fsr_logs(f"[DEBUG] Found {len(native_functions)} interesting native functions")
+        except Exception as e:
+            log_to_fsr_logs(f"[WARNING] Error getting functions: {str(e)}")
+        
+        # Get current selection if available
+        try:
+            current_func_url = urljoin(base_url, "get_current_function")
+            response = requests.get(current_func_url, timeout=5)
+            if response.ok:
+                current_func = response.text.strip()
+                if current_func and "Error" not in current_func and current_func != "No function selected":
+                    context_parts.append(f"Currently Selected Function:\n{current_func}")
+                    
+                    # Get current address and try decompilation
+                    addr_response = requests.get(urljoin(base_url, "get_current_address"), timeout=5)
+                    if addr_response.ok:
+                        current_addr = addr_response.text.strip()
+                        if current_addr and "Error" not in current_addr:
+                            # Get decompiled code
+                            decompile_url = urljoin(base_url, "decompile_function")
+                            decompile_response = requests.get(decompile_url, 
+                                                            params={"address": current_addr}, 
+                                                            timeout=10)
+                            if decompile_response.ok:
+                                decompiled = decompile_response.text.strip()
+                                if decompiled and "Error" not in decompiled:
+                                    # Limit decompiled code to reasonable size
+                                    context_parts.append(f"Decompiled Code at {current_addr}:\n```c\n{decompiled[:800]}{'...(truncated)' if len(decompiled) > 800 else ''}\n```")
+                                    log_to_fsr_logs("[DEBUG] Retrieved decompiled code from current selection")
+        except Exception as e:
+            log_to_fsr_logs(f"[WARNING] Error getting current function: {str(e)}")
+        
+        # Get imports for hooking opportunities
+        try:
+            imports_url = urljoin(base_url, "list_imports")
+            response = requests.get(imports_url, timeout=5)
+            if response.ok:
+                imports_data = response.text.strip().split('\n')
+                if imports_data and imports_data[0]:
+                    interesting_imports = [imp.strip() for imp in imports_data[:15] if imp.strip()]
+                    if interesting_imports:
+                        context_parts.append(f"Imported Functions (potential hook points):\n" + '\n'.join(f"- {imp}" for imp in interesting_imports))
+                        log_to_fsr_logs(f"[DEBUG] Found {len(interesting_imports)} imported functions")
+        except Exception as e:
+            log_to_fsr_logs(f"[WARNING] Error getting imports: {str(e)}")
+        
+        if context_parts:
+            full_context = "=== REAL GHIDRA ANALYSIS CONTEXT ===\n\n" + "\n\n".join(context_parts)
+            full_context += "\n\n=== INSTRUCTIONS ===\nUse the above REAL data from Ghidra analysis. Hook the actual library names, function names, and addresses found above."
+            log_to_fsr_logs("[DEBUG] Successfully retrieved comprehensive Ghidra analysis context")
+            return full_context
+        else:
+            log_to_fsr_logs("[WARNING] No analysis data retrieved from Ghidra")
+            return "Ghidra server is accessible but no meaningful binary analysis data was retrieved. Please ensure a binary is open and analyzed in Ghidra."
+            
+    except ImportError:
+        log_to_fsr_logs("[ERROR] requests library not available for Ghidra integration")
+        return "Cannot connect to Ghidra server - requests library not available."
+    except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Failed to get real Ghidra context: {str(e)}")
+        return f"Failed to connect to Ghidra server at {GHIDRA_SERVER_URL}. Error: {str(e)}\nEnsure Ghidra server is running and a binary is loaded."
+
+def generate_fallback_script(prompt):
+    """Fallback template-based generation when Claude AI is unavailable"""
+    prompt_lower = prompt.lower()
+    
+    if any(keyword in prompt_lower for keyword in ['ssl', 'pinning', 'certificate', 'okhttp']):
+        return generate_ssl_bypass_script_template()
+    elif any(keyword in prompt_lower for keyword in ['root', 'detection', 'rootbeer']):
+        return generate_root_bypass_script_template()
+    elif any(keyword in prompt_lower for keyword in ['oncreate', 'activity', 'mainactivity']):
+        return generate_activity_hook_script_template(prompt)
+    elif any(keyword in prompt_lower for keyword in ['native', 'strcmp', 'libc', '.so']):
+        return generate_native_hook_script_template(prompt)
+    else:
+        return generate_generic_hook_script_template(prompt)
+
+def generate_ssl_bypass_script_template():
+    """Generate SSL pinning bypass script template"""
+    return """Java.perform(function() {
+    console.log("[+] SSL Pinning Bypass Script Loaded (Template)");
+    
+    // OkHttp3 SSL Pinning Bypass
+    try {
+        var CertificatePinner = Java.use("okhttp3.CertificatePinner");
+        CertificatePinner.check.overload('java.lang.String', 'java.util.List').implementation = function(hostname, peerCertificates) {
+            console.log("[+] SSL Pinning bypassed for: " + hostname);
+            return;
+        };
+        console.log("[+] OkHttp3 CertificatePinner bypass enabled");
+    } catch (e) {
+        console.log("[!] OkHttp3 not found: " + e.message);
+    }
+    
+    // Android SSL Pinning Bypass
+    try {
+        var X509TrustManager = Java.use("javax.net.ssl.X509TrustManager");
+        X509TrustManager.checkServerTrusted.implementation = function(chain, authType) {
+            console.log("[+] X509TrustManager checkServerTrusted bypassed");
+            return;
+        };
+        console.log("[+] X509TrustManager bypass enabled");
+    } catch (e) {
+        console.log("[!] X509TrustManager bypass failed: " + e.message);
+    }
+    
+    console.log("[+] SSL Pinning bypass complete");
+});"""
+
+def generate_root_bypass_script_template():
+    """Generate root detection bypass script template"""
+    return """Java.perform(function() {
+    console.log("[+] Root Detection Bypass Script Loaded (Template)");
+    
+    // RootBeer library bypass
+    try {
+        var RootBeer = Java.use("com.scottyab.rootbeer.RootBeer");
+        RootBeer.isRooted.implementation = function() {
+            console.log("[+] RootBeer.isRooted() bypassed");
+            return false;
+        };
+        console.log("[+] RootBeer bypass enabled");
+    } catch (e) {
+        console.log("[!] RootBeer not found: " + e.message);
+    }
+    
+    // Generic root detection bypass
+    try {
+        var File = Java.use("java.io.File");
+        File.exists.implementation = function() {
+            var filename = this.getAbsolutePath();
+            if (filename.indexOf("/system/bin/su") !== -1 ||
+                filename.indexOf("/system/xbin/su") !== -1 ||
+                filename.indexOf("/sbin/su") !== -1 ||
+                filename.indexOf("/system/app/Superuser.apk") !== -1) {
+                console.log("[+] File.exists() bypassed for: " + filename);
+                return false;
+            }
+            return this.exists();
+        };
+        console.log("[+] Generic root file detection bypass enabled");
+    } catch (e) {
+        console.log("[!] File bypass failed: " + e.message);
+    }
+    
+    console.log("[+] Root detection bypass complete");
+});"""
+
+def generate_activity_hook_script_template(prompt):
+    """Generate Activity lifecycle hook script"""
+    # Extract class name from prompt if possible
+    class_name = "MainActivity"
+    if "." in prompt:
+        words = prompt.split()
+        for word in words:
+            if "." in word and ("activity" in word.lower() or "Activity" in word):
+                class_name = word.split(".")[0] + "." + word.split(".")[1]
+                break
+    
+    return f"""Java.perform(function() {{
+    console.log("[+] Activity Hook Script Loaded");
+    
+    try {{
+        var {class_name.split('.')[-1]} = Java.use("{class_name}");
+        
+        {class_name.split('.')[-1]}.onCreate.overload('android.os.Bundle').implementation = function(savedInstanceState) {{
+            console.log("[+] {class_name}.onCreate() called");
+            console.log("[+] SavedInstanceState: " + savedInstanceState);
+            
+            // Call original onCreate
+            var result = this.onCreate(savedInstanceState);
+            
+            console.log("[+] {class_name}.onCreate() completed");
+            return result;
+        }};
+        
+        {class_name.split('.')[-1]}.onResume.implementation = function() {{
+            console.log("[+] {class_name}.onResume() called");
+            return this.onResume();
+        }};
+        
+        {class_name.split('.')[-1]}.onPause.implementation = function() {{
+            console.log("[+] {class_name}.onPause() called");
+            return this.onPause();
+        }};
+        
+        console.log("[+] {class_name} hooks installed successfully");
+    }} catch (e) {{
+        console.log("[!] Failed to hook {class_name}: " + e.message);
+    }}
+}});"""
+
+def generate_native_hook_script_template(prompt):
+    """Generate native function hook script"""
+    # Extract function and library names from prompt
+    func_name = "strcmp"
+    lib_name = "libc.so"
+    
+    if "strcmp" in prompt.lower():
+        func_name = "strcmp"
+    elif "strncmp" in prompt.lower():
+        func_name = "strncmp"
+    elif "memcmp" in prompt.lower():
+        func_name = "memcmp"
+    
+    if ".so" in prompt:
+        words = prompt.split()
+        for word in words:
+            if ".so" in word:
+                lib_name = word
+                break
+                
+    return f"""Java.perform(function() {{
+    console.log("[+] Native Hook Script Loaded");
+    
+    try {{
+        var {func_name}_ptr = Module.findExportByName("{lib_name}", "{func_name}");
+        if ({func_name}_ptr) {{
+            console.log("[+] Found {func_name} at: " + {func_name}_ptr);
+            
+            Interceptor.attach({func_name}_ptr, {{
+                onEnter: function(args) {{
+                    console.log("[+] {func_name} called");
+                    console.log("[+] arg0: " + Memory.readUtf8String(args[0]));
+                    console.log("[+] arg1: " + Memory.readUtf8String(args[1]));
+                    this.arg0 = Memory.readUtf8String(args[0]);
+                    this.arg1 = Memory.readUtf8String(args[1]);
+                }},
+                onLeave: function(retval) {{
+                    console.log("[+] {func_name} returned: " + retval);
+                    console.log("[+] Comparing: '" + this.arg0 + "' vs '" + this.arg1 + "'");
+                    
+                    // Uncomment to always return 0 (strings equal)
+                    // retval.replace(0);
+                }}
+            }});
+            console.log("[+] {func_name} hook installed successfully");
+        }} else {{
+            console.log("[!] {func_name} not found in {lib_name}");
+        }}
+    }} catch (e) {{
+        console.log("[!] Failed to hook {func_name}: " + e.message);
+    }}
+}});"""
+
+
+def generate_generic_hook_script_template(prompt):
+    """Generate generic hook script based on prompt"""
+    return f"""Java.perform(function() {{
+    console.log("[+] Generic Hook Script Loaded");
+    console.log("[+] Based on prompt: {prompt}");
+    
+    // TODO: Implement specific hooks based on your requirements
+    // This is a template script - customize it for your needs
+    
+    try {{
+        // Example: Hook a specific class method
+        // var TargetClass = Java.use("com.example.TargetClass");
+        // TargetClass.targetMethod.implementation = function() {{
+        //     console.log("[+] targetMethod called");
+        //     var result = this.targetMethod();
+        //     console.log("[+] Result: " + result);
+        //     return result;
+        // }};
+        
+        console.log("[+] Please customize this script for your specific needs");
+        console.log("[+] Refer to Frida documentation for more examples");
+        
+    }} catch (e) {{
+        console.log("[!] Hook failed: " + e.message);
+    }}
+    
+    console.log("[+] Generic hook script loaded - customize as needed");
+}});"""
 
 # MAIN ENTRY POINT
 if __name__ == "__main__":

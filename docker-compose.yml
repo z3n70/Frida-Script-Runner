@@ -1,0 +1,15 @@
+services:
+  frida-script-runner:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./scripts:/app/scripts
+      - ./tmp:/app/tmp
+      - ./frida-server:/app/frida-server
+    environment:
+      - FLASK_ENV=production
+      - ADB_SERVER_SOCKET=tcp:host.docker.internal:5037
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
