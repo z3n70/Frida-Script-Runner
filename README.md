@@ -245,11 +245,12 @@ Contact the maintainer: [zenalarifin_](https://x.com/zenalarifin_)
 ## Contributors
 
 ### Core Team
-- [Pawang Uler](https://github.com/karjok) - Core Development
-- [Om-Yud](https://github.com/Yudha-ard) - iOS Integration
-- [Mas Gondrong](https://github.com/xcapri) - UI/UX Design
-- [Alfan](https://github.com/alfanilham) - Docker Support
-- [Revan](https://github.com/revan-ar) - Testing & QA
+- [Karjok](https://github.com/karjok)
+- [Hasyim](https://github.com/xcapri)
+- [Irvan W](https://github.com/xcapri)
+- [Yudha](https://github.com/Yudha-ard)
+- [Alfan](https://github.com/alfanilham)
+- [Revan](https://github.com/revan-ar)
 
 ## License & Acknowledgments
 
