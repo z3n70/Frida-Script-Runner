@@ -247,7 +247,7 @@ Contact the maintainer: [zenalarifin_](https://x.com/zenalarifin_)
 ### Core Team
 - [Karjok](https://github.com/karjok)
 - [Hasyim](https://github.com/xcapri)
-- [Irvan W](https://github.com/xcapri)
+- [Irvan W](https://github.com/IrvanWijayaSardam)
 - [Yudha](https://github.com/Yudha-ard)
 - [Alfan](https://github.com/alfanilham)
 - [Revan](https://github.com/revan-ar)
