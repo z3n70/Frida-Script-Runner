@@ -1077,19 +1077,22 @@ def fix_script():
     global process, frida_output_buffer, current_script_path
     
     try:
-        # Check if a script is currently running
+        # Determine which script to fix
+        if current_script_path and os.path.exists(current_script_path):
+            script_path_to_fix = current_script_path
+        elif os.path.exists(TEMP_SCRIPT_PATH):
+            script_path_to_fix = os.path.abspath(TEMP_SCRIPT_PATH)
+        else:
+            return jsonify({"error": "No script available to fix. Generate a script first."}), 400
+
         if not process or process.poll() is not None:
-            return jsonify({"error": "No Frida script is currently running"}), 400
-        
-        if not current_script_path:
-            return jsonify({"error": "No script path available for fixing"}), 400
-        
-        if not os.path.exists(current_script_path):
-            return jsonify({"error": "Current script file not found"}), 400
-        
+            log_to_fsr_logs("[MANUAL-FIX] No active Frida process detected; proceeding with offline fix using saved script.")
+        else:
+            log_to_fsr_logs("[MANUAL-FIX] Active Frida process detected; will terminate after fix.")
+
         log_to_fsr_logs("[MANUAL-FIX] Manual script fix requested")
         socketio.emit("output", {"data": "\n[MANUAL-FIX] Manual script fix requested, analyzing errors...\n"})
-        
+
         # Extract error messages from output buffer
         error_messages = []
         for line in frida_output_buffer:
@@ -1104,24 +1107,25 @@ def fix_script():
             error_messages = ["No specific errors detected - general script fixing requested"]
         
         # Attempt to fix the script
-        fixed_script = attempt_script_autofix(current_script_path, error_messages, frida_output_buffer[-20:])
+        fixed_script = attempt_script_autofix(script_path_to_fix, error_messages, frida_output_buffer[-20:])
         
         if fixed_script:
-            # Kill current process
             if process and process.poll() is None:
                 process.terminate()
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-            
-            # Save the fixed script
-            with open(current_script_path, 'w') as f:
+
+            with open(script_path_to_fix, 'w', encoding='utf-8') as f:
                 f.write(fixed_script)
-            
+
+            if script_path_to_fix == os.path.abspath(TEMP_SCRIPT_PATH):
+                current_script_path = script_path_to_fix
+
             socketio.emit("output", {"data": "[MANUAL-FIX] Generated fixed script, updating UI...\n"})
             log_to_fsr_logs("[MANUAL-FIX] Successfully generated and applied fixed script")
-            
+
             # Return the fixed script content so UI can update the textarea
             return jsonify({
                 "success": True, 
@@ -1913,8 +1917,8 @@ def attempt_script_autofix(script_path, error_messages, output_log):
             log_to_fsr_logs(f"[AUTO-FIX] Fallback reading from {script_path}")
 
         # Extract recent Frida logs for context
-        error_summary = '\n'.join(error_messages[-5:]) if error_messages else "No specific errors detected"
-        output_summary = '\n'.join(output_log[-10:]) if output_log else "No additional output"
+        error_summary = "\n".join(error_messages) if error_messages else "No specific errors detected"
+        output_summary = "\n".join(output_log) if output_log else "No additional output"
 
         # Create minimal fix prompt - CLAUDE.md contains all the fix requirements
         fix_prompt = f"""Fix the Frida script errors in temp_generated.js based on these error logs:

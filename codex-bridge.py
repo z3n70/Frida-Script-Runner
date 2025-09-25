@@ -263,6 +263,7 @@ class CodexBridgeHandler(BaseHTTPRequestHandler):
                 'success': True,
                 'script': script_text,
             }
+            print('=====prompt done=====')
             self.send_json_response(200, response)
         except json.JSONDecodeError:
             self.send_json_response(400, {'success': False, 'error': 'Invalid JSON'})
