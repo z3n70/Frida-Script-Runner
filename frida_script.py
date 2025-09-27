@@ -33,23 +33,25 @@ frida_output_buffer = []
 current_script_path = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
-# Codex bridge and MCP configuration
-GHIDRA_MCP_PATH = "D:/Irvan/Work/MCP/GhidraMCPFrida/bridge_mcp_ghidra.py"
-GHIDRA_SERVER_URL = "http://127.0.0.1:8080/"
+# Codex bridge configuration
 
 # Resolve Codex bridge endpoint based on environment
 if os.path.exists("/.dockerenv"):
     # Inside Docker - talk to host Codex bridge
-    CODEX_BRIDGE_URL = os.environ.get("CODEX_BRIDGE_URL", "http://host.docker.internal:8091")
+    CODEX_BRIDGE_URL = "http://host.docker.internal:8091"
 else:
     # Native environment - default to local Codex bridge
-    CODEX_BRIDGE_URL = os.environ.get("CODEX_BRIDGE_URL", "http://localhost:8091")
+    CODEX_BRIDGE_URL = "http://localhost:8091"
 TEMP_SCRIPT_PATH = "temp_generated.js"
 
 
 def log_to_fsr_logs(message):
     """Send debug message to FSR Logs on web interface"""
     socketio.emit("fsr_log", {"data": message})
+
+def get_ghidra_server_url():
+    """Return configured Ghidra MCP server URL or default localhost endpoint"""
+    return os.environ.get("GHIDRA_SERVER_URL", "http://127.0.0.1:8080/")
 
 UPLOAD_FOLDER = 'tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -1969,7 +1971,7 @@ def get_ghidra_analysis_context():
         
         log_to_fsr_logs("[DEBUG] Connecting to Ghidra server to get real analysis context...")
         
-        base_url = GHIDRA_SERVER_URL
+        base_url = get_ghidra_server_url()
         context_parts = []
         
         # Get strings to find library name
@@ -2096,7 +2098,8 @@ def get_ghidra_analysis_context():
         return "Cannot connect to Ghidra server - requests library not available."
     except Exception as e:
         log_to_fsr_logs(f"[ERROR] Failed to get real Ghidra context: {str(e)}")
-        return f"Failed to connect to Ghidra server at {GHIDRA_SERVER_URL}. Error: {str(e)}\nEnsure Ghidra server is running and a binary is loaded."
+        server_url = get_ghidra_server_url()
+        return f"Failed to connect to Ghidra server at {server_url}. Error: {str(e)}\nEnsure Ghidra server is running and a binary is loaded."
 
 def generate_fallback_script(prompt):
     """Fallback template-based generation when Codex AI is unavailable"""

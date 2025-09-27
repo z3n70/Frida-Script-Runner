@@ -1,0 +1,31 @@
+# Ghidra MCP Server
+[mcp_servers.ghidra]
+command = "C:\\Users\\<User>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+startup_timeout_ms = 60_000
+args = [
+    "D:\\Download\\Compressed\\GhidraMCP-release-1-4_3\\GhidraMCP-release-1-4\\bridge_mcp_ghidra.py",
+    "--ghidra-server",
+    "http://127.0.0.1:8080/"
+]
+
+[mcp_servers.ghidra.env]
+PYTHONIOENCODING = "utf-8"
+SYSTEMROOT = 'C:\\Windows'
+
+
+# Jadx MCP Server
+[mcp_servers.jadx]
+command = "C:\\Users\\<User>\\.local\\bin\\uv.exe"
+startup_timeout_ms = 60_000
+args = [
+    "--directory",
+    "D:\\Irvan\\Work\\MCP\\JadxMCPServer\\jadx-mcp-server-v3.3.0\\jadx-mcp-server\\",
+    "run",
+    "jadx_mcp_server.py",
+    "--jadx-port",
+    "8650"
+]
+
+[mcp_servers.jadx.env]
+PYTHONIOENCODING = "utf-8"
+SYSTEMROOT = "C:\\Windows"

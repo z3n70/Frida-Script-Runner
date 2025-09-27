@@ -1,241 +1,252 @@
 Java.perform(function() {
-    function log(msg) {
-        try { console.log(msg); } catch (_) {}
-    }
-
-    function computePassword() {
-        try {
-            var witches = ["weatherwax", "ogg", "garlick", "nitt", "aching", "dismass"];
-            var second = 0; // 3 - 3
-            var third = 1;  // (3 / 3) + second
-            var fourth = 2; // (third + third) - second
-            var fifth = 5;  // 3 + fourth
-            var sixth = 4;  // (fifth + second) - third
-            return "" + witches[fifth] + "." + witches[third] + "." + witches[second] + "." + witches[sixth] + "." + witches[3] + "." + witches[fourth];
-        } catch (e) {
-            log("[!] computePassword error: " + e);
-            return null;
-        }
-    }
-
-    log("[+] Frida script started for com.hellocmu.picoctf");
-
-    // ---- Java hooks ----
     try {
-        var FlagstaffHill = null;
-        try {
-            FlagstaffHill = Java.use('com.hellocmu.picoctf.FlagstaffHill');
-        } catch (e) {
-            log("[!] Failed to Java.use FlagstaffHill: " + e);
+        console.log("[+] Frida script started");
+
+        // Configuration
+        var LIB_NAME = "libhellojni.so";
+        var AUTO_GET_FLAG = true;      // Automatically compute and fetch flag on start
+        var BYPASS_CHECK = false;      // If true, bypass password check in getFlag
+
+        // Compute expected password based on FlagstaffHill.getFlag logic
+        function computePassword() {
+            try {
+                var witches = ["weatherwax", "ogg", "garlick", "nitt", "aching", "dismass"]; // 0..5
+                var second = 3 - 3;                 // 0
+                var third = (3 / 3) + second;       // 1
+                var fourth = (third + third) - second; // 2
+                var fifth = 3 + fourth;             // 5
+                var sixth = (fifth + second) - third;  // 4
+                var password = "".concat(witches[fifth]).concat(".")
+                                  .concat(witches[third]).concat(".")
+                                  .concat(witches[second]).concat(".")
+                                  .concat(witches[sixth]).concat(".")
+                                  .concat(witches[3]).concat(".")
+                                  .concat(witches[fourth]);
+                return password; // dismass.ogg.weatherwax.aching.nitt.garlick
+            } catch (e) {
+                console.log("[!] computePassword error: " + e);
+                return null;
+            }
         }
 
-        if (FlagstaffHill) {
-            // Hook getFlag(String, Context)
+        // Wait for native library to be loaded, then run callback
+        function waitForLib(libName, onReady, triesLeft) {
             try {
-                var overload = FlagstaffHill.getFlag.overload('java.lang.String', 'android.content.Context');
-                overload.implementation = function(input, ctx) {
-                    try {
-                        var inStr = (input ? input.toString() : "<null>");
-                        log("[Java] getFlag called with input='" + inStr + "' ctx=" + ctx);
-                    } catch (_) {}
-
-                    var result;
-                    try {
-                        result = this.getFlag.call(this, input, ctx);
-                    } catch (e) {
-                        log("[!] Error calling original getFlag: " + e);
-                        result = null;
-                    }
-
-                    var outStr = (result ? result.toString() : "<null>");
-                    log("[Java] getFlag returned => '" + outStr + "'");
-
-                    // If app says NOPE, try bypass by calling native sesame with computed password
-                    try {
-                        if (outStr === "NOPE") {
-                            var pwd = computePassword();
-                            if (pwd) {
-                                log("[Java] getFlag bypass: calling native sesame with computed password: " + pwd);
-                                try {
-                                    var nativeOut = FlagstaffHill.sesame(pwd);
-                                    if (nativeOut) {
-                                        log("[Java] sesame returned => '" + nativeOut + "'");
-                                        return nativeOut;
-                                    }
-                                } catch (e2) {
-                                    log("[!] Error calling native sesame: " + e2);
-                                }
-                            }
-                        }
-                    } catch (e3) {
-                        log("[!] Bypass block error: " + e3);
-                    }
-
-                    return result;
-                };
-                log("[+] Hooked com.hellocmu.picoctf.FlagstaffHill.getFlag(String, Context)");
+                if (typeof triesLeft === 'undefined') triesLeft = 100; // ~10s @ 100ms
+                var base = Module.getBaseAddress(libName);
+                if (base) {
+                    console.log("[+] " + libName + " base: " + base);
+                    onReady(base);
+                    return;
+                }
+                if (triesLeft <= 0) {
+                    console.log("[!] Timed out waiting for " + libName);
+                    return;
+                }
+                setTimeout(function() { waitForLib(libName, onReady, triesLeft - 1); }, 100);
             } catch (e) {
-                log("[!] Failed to hook getFlag: " + e);
+                console.log("[!] waitForLib error: " + e);
             }
+        }
 
-            // Optionally call native sesame directly after startup
-            setTimeout(function() {
+        // Hook Java methods
+        (function hookJava() {
+            try {
+                var FlagstaffHill = null;
                 try {
-                    var pwd = computePassword();
-                    if (pwd) {
-                        log("[+] Attempting direct call to FlagstaffHill.sesame with password: " + pwd);
-                        try {
-                            var direct = FlagstaffHill.sesame(pwd);
-                            log("[+] Direct sesame result: '" + direct + "'");
-                        } catch (e) {
-                            log("[!] Direct sesame call failed: " + e);
-                        }
-                    }
+                    FlagstaffHill = Java.use('com.hellocmu.picoctf.FlagstaffHill');
                 } catch (e) {
-                    log("[!] Delayed sesame caller error: " + e);
+                    console.log('[!] Class not found: com.hellocmu.picoctf.FlagstaffHill -> ' + e);
                 }
-            }, 500);
-        }
-    } catch (e) {
-        log("[!] Java hooks error: " + e);
-    }
 
-    // ---- Native (JNI) hook ----
-    try {
-        var libName = 'libhellojni.so';
-        var base = null;
-        try {
-            base = Module.getBaseAddress(libName);
-        } catch (e) {
-            log("[!] Module.getBaseAddress threw: " + e);
-            base = null;
-        }
-
-        if (base === null) {
-            log("[!] Base address for " + libName + " not found. Will watch for library loads.");
-            // Hook dlopen to retry once the library loads
-            try {
-                var dlopen = Module.findExportByName(null, 'dlopen');
-                var android_dlopen_ext = Module.findExportByName(null, 'android_dlopen_ext');
-
-                var onLoad = function(pathPtr) {
+                if (FlagstaffHill) {
+                    // Hook getFlag(String, Context)
                     try {
-                        var path = pathPtr ? pathPtr.readCString() : '';
-                        if (path && path.indexOf('hellojni') !== -1) {
-                            setTimeout(setupNativeHook, 200); // give it a moment
-                        }
-                    } catch (e) {
-                        log("[!] onLoad error: " + e);
-                    }
-                };
+                        var overload = FlagstaffHill.getFlag.overload('java.lang.String', 'android.content.Context');
+                        overload.implementation = function(input, ctx) {
+                            try {
+                                var inStr = input ? input.toString() : null;
+                                var expected = computePassword();
+                                console.log('[*] FlagstaffHill.getFlag called with input: ' + inStr);
 
-                if (dlopen) {
-                    Interceptor.attach(dlopen, {
-                        onEnter: function(args) { onLoad(args[0]); }
-                    });
+                                if (BYPASS_CHECK) {
+                                    console.log('[*] BYPASS_CHECK enabled; invoking native sesame() directly');
+                                    try {
+                                        var result = FlagstaffHill.sesame(expected);
+                                        console.log('[+] sesame("' + expected + '") => ' + result);
+                                        return result;
+                                    } catch (ee) {
+                                        console.log('[!] Error calling sesame() from bypass: ' + ee);
+                                    }
+                                }
+
+                                var ret = overload.call(this, input, ctx);
+                                console.log('[*] getFlag returned: ' + ret);
+                                if (inStr !== expected) {
+                                    console.log('[i] Provided input != expected password');
+                                    console.log('[i] Expected: ' + expected);
+                                }
+                                return ret;
+                            } catch (ie) {
+                                console.log('[!] getFlag hook error: ' + ie);
+                                // Fallback to original if anything goes wrong
+                                return overload.call(this, input, ctx);
+                            }
+                        };
+                        console.log('[+] Hooked FlagstaffHill.getFlag(String, Context)');
+                    } catch (e1) {
+                        console.log('[!] Failed to hook FlagstaffHill.getFlag: ' + e1);
+                    }
                 }
-                if (android_dlopen_ext) {
-                    Interceptor.attach(android_dlopen_ext, {
-                        onEnter: function(args) { onLoad(args[0]); }
-                    });
+
+                // Optionally hook MainActivity.buttonClick(View)
+                try {
+                    var MainActivity = Java.use('com.hellocmu.picoctf.MainActivity');
+                    var buttonClick = MainActivity.buttonClick.overload('android.view.View');
+                    buttonClick.implementation = function(v) {
+                        try {
+                            console.log('[*] MainActivity.buttonClick invoked');
+                        } catch (ie) {
+                            console.log('[!] buttonClick hook inner error: ' + ie);
+                        }
+                        return buttonClick.call(this, v);
+                    };
+                    console.log('[+] Hooked MainActivity.buttonClick(View)');
+                } catch (e2) {
+                    console.log('[!] Failed to hook MainActivity.buttonClick: ' + e2);
                 }
             } catch (e) {
-                log("[!] Failed to hook dlopen: " + e);
+                console.log('[!] hookJava error: ' + e);
             }
-        } else {
-            setupNativeHook();
-        }
+        })();
 
-        function setupNativeHook() {
+        // Hook native exports when lib is loaded
+        waitForLib(LIB_NAME, function(base) {
             try {
-                var baseNow = null;
-                try { baseNow = Module.getBaseAddress(libName); } catch (_) { baseNow = null; }
-                if (baseNow === null) {
-                    log("[!] Cannot setup native hook: base still null");
-                    return;
+                var exports = [];
+                try {
+                    exports = Module.enumerateExports(LIB_NAME);
+                } catch (ee) {
+                    console.log('[!] enumerateExports failed: ' + ee);
+                    exports = [];
                 }
 
-                var exportName = 'Java_com_hellocmu_picoctf_FlagstaffHill_sesame';
-                var target = Module.findExportByName(libName, exportName);
-                if (target === null) {
-                    log("[!] Export '" + exportName + "' not found. Enumerating symbols to locate candidate...");
+                function findExport(name) {
                     try {
-                        var cand = null;
-                        var symbols = Module.enumerateSymbolsSync(libName);
-                        for (var i = 0; i < symbols.length; i++) {
-                            var s = symbols[i];
-                            if (!s || !s.name) continue;
-                            if (s.name.indexOf('FlagstaffHill') !== -1 && s.name.indexOf('sesame') !== -1) {
-                                cand = s.address;
-                                log("[i] Found candidate symbol: " + s.name + " @ " + s.address);
-                                break;
-                            }
+                        for (var i = 0; i < exports.length; i++) {
+                            if (exports[i].name === name) return exports[i].address;
                         }
-                        target = cand;
+                    } catch (fe) { console.log('[!] findExport error: ' + fe); }
+                    return null;
+                }
+
+                // Helper: jstring -> JS string
+                function jstringToString(jstr) {
+                    try {
+                        if (jstr === null || jstr.isNull()) return null;
+                        var env = Java.vm.getEnv();
+                        var cStr = env.getStringUtfChars(jstr, null);
+                        var jsStr = Memory.readUtf8String(cStr);
+                        env.releaseStringUtfChars(jstr, cStr);
+                        return jsStr;
                     } catch (e) {
-                        log("[!] enumerateSymbolsSync failed: " + e);
+                        console.log('[!] jstringToString error: ' + e);
+                        return null;
                     }
                 }
 
-                if (target === null) {
-                    log("[!] JNI target still not found; skipping native hook.");
-                    return;
+                // Attach to JNI function: Java_com_hellocmu_picoctf_FlagstaffHill_sesame(JNIEnv*, jclass, jstring)
+                try {
+                    var sesamePtr = findExport('Java_com_hellocmu_picoctf_FlagstaffHill_sesame');
+                    if (sesamePtr) {
+                        Interceptor.attach(sesamePtr, {
+                            onEnter: function(args) {
+                                try {
+                                    // args[0] = JNIEnv*, args[1] = jclass, args[2] = jstring
+                                    var inputStr = jstringToString(args[2]);
+                                    console.log('[*] JNI sesame() called, input = ' + inputStr);
+                                } catch (ie) { console.log('[!] sesame onEnter error: ' + ie); }
+                            },
+                            onLeave: function(retval) {
+                                try {
+                                    // retval is jstring
+                                    var outStr = jstringToString(retval);
+                                    console.log('[+] JNI sesame() returned: ' + outStr);
+                                } catch (ie) { console.log('[!] sesame onLeave error: ' + ie); }
+                            }
+                        });
+                        console.log('[+] Intercepted JNI export: Java_com_hellocmu_picoctf_FlagstaffHill_sesame @ ' + sesamePtr);
+                    } else {
+                        console.log('[!] sesame export not found');
+                    }
+                } catch (eSes) {
+                    console.log('[!] Failed to hook JNI sesame: ' + eSes);
                 }
 
-                log("[+] Attaching to JNI: " + target);
-                Interceptor.attach(target, {
-                    onEnter: function(args) {
-                        this.err = null;
-                        try {
-                            // JNI static method signature: (JNIEnv* env, jclass clazz, jstring str)
-                            this.env = args[0];
-                            this.jstr = args[2];
-                            var s = null;
-                            try {
-                                // Convert jstring to JS string
-                                var jenv = Java.vm.getEnv();
-                                var cstr = jenv.getStringUtfChars(this.jstr, null);
-                                s = cstr.readUtf8String();
-                                jenv.releaseStringUtfChars(this.jstr, cstr);
-                            } catch (e) {
-                                this.err = e;
+                // Optional native helpers found in Ghidra exports
+                var nativeNames = [
+                    'getResponse', 'unscramble', 'pepper', 'alphabet',
+                    'Java_com_hellocmu_picoctf_FlagstaffHill_paprika',
+                    'Java_com_hellocmu_picoctf_FlagstaffHill_fenugreek',
+                    'Java_com_hellocmu_picoctf_FlagstaffHill_cilantro',
+                    'Java_com_hellocmu_picoctf_FlagstaffHill_cardamom',
+                    'dill', 'nutmeg', 'basil', 'chervil', 'marjoram', 'anise', 'oregano', 'sumac'
+                ];
+
+                nativeNames.forEach(function(nm) {
+                    try {
+                        var ptrExp = findExport(nm);
+                        if (!ptrExp) return;
+                        Interceptor.attach(ptrExp, {
+                            onEnter: function(args) {
+                                try {
+                                    this.ts = Date.now();
+                                    console.log('[*] Enter ' + nm + ' @ ' + ptrExp);
+                                } catch (ie) { console.log('[!] ' + nm + ' onEnter error: ' + ie); }
+                            },
+                            onLeave: function(retval) {
+                                try {
+                                    var dt = (Date.now() - (this.ts || Date.now()));
+                                    console.log('[*] Leave ' + nm + ' => retval=' + retval + ' (' + dt + 'ms)');
+                                } catch (ie) { console.log('[!] ' + nm + ' onLeave error: ' + ie); }
                             }
-                            if (this.err) {
-                                log("[JNI] sesame(arg) <decode-failed>: " + this.err);
-                            } else {
-                                log("[JNI] sesame(arg) => '" + s + "'");
-                            }
-                        } catch (e) {
-                            log("[!] JNI onEnter error: " + e);
-                        }
-                    },
-                    onLeave: function(retval) {
-                        try {
-                            // retval is jstring; try to decode
-                            var out = null;
-                            try {
-                                var jenv2 = Java.vm.getEnv();
-                                out = jenv2.getStringUtfChars(retval, null).readUtf8String();
-                                // Not releasing here because getStringUtfChars created a new pointer; safe in Frida session
-                            } catch (e) {
-                                log("[JNI] Failed to decode return jstring: " + e);
-                            }
-                            if (out !== null) {
-                                log("[JNI] sesame(ret) => '" + out + "'");
-                            }
-                        } catch (e) {
-                            log("[!] JNI onLeave error: " + e);
-                        }
+                        });
+                        console.log('[+] Intercepted native export: ' + nm + ' @ ' + ptrExp);
+                    } catch (eHook) {
+                        console.log('[!] Failed to hook ' + nm + ': ' + eHook);
                     }
                 });
             } catch (e) {
-                log("[!] setupNativeHook error: " + e);
+                console.log('[!] Native hook setup error: ' + e);
             }
-        }
-    } catch (e) {
-        log("[!] Native hook block error: " + e);
-    }
+        });
 
-    log("[+] Script setup completed");
+        // Proactively fetch the flag once the lib is ready
+        if (AUTO_GET_FLAG) {
+            waitForLib(LIB_NAME, function(_) {
+                try {
+                    var FlagstaffHill = null;
+                    try { FlagstaffHill = Java.use('com.hellocmu.picoctf.FlagstaffHill'); } catch (_) {}
+                    if (!FlagstaffHill) {
+                        console.log('[!] Cannot auto-get flag: FlagstaffHill class unavailable');
+                        return;
+                    }
+                    var pwd = computePassword();
+                    if (!pwd) {
+                        console.log('[!] Cannot auto-get flag: password compute failed');
+                        return;
+                    }
+                    var result = FlagstaffHill.sesame(pwd);
+                    console.log('[+] AUTO flag via sesame("' + pwd + '") => ' + result);
+                } catch (e) {
+                    console.log('[!] AUTO_GET_FLAG error: ' + e);
+                }
+            });
+        }
+
+        console.log("[+] Script setup completed");
+    } catch (outer) {
+        console.log('[!] Top-level error: ' + outer);
+    }
 });
 

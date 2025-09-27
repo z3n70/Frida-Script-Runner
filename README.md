@@ -7,7 +7,7 @@
 
 Frida Script Runner v0.2.0 is a powerful web-based toolkit designed for Android and iOS penetration testing and mobile application security analysis.
 
-This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask to enhance the efficiency of penetration testing tasks. It features AI-powered script generation through Claude CLI integration with MCP (Model Context Protocol) servers for advanced binary analysis.
+This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask to enhance the efficiency of penetration testing tasks. It features AI-powered script generation through Codex CLI integration with MCP (Model Context Protocol) servers for advanced binary analysis.
 
 A comprehensive toolkit for analyzing, manipulating, and interacting with mobile applications (Android & iOS), APK/IPA dumping, and automated script generation.
 
@@ -20,11 +20,11 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 - **Custom Scripting:** Easily create and run custom Frida scripts by copy-pasting the script code directly into the tool.
 
 ### AI-Powered Script Generation 🤖
-- **Claude CLI Integration:** Generate Frida scripts using Claude AI with advanced prompt engineering.
+- **Codex CLI Integration:** Generate Frida scripts using the Codex CLI with advanced prompt engineering.
 - **MCP Server Support:** Access Ghidra and JADX MCP servers for real-time binary analysis and reverse engineering.
 - **Frida API Compatibility:** AI-generated scripts use only compatible functions from the official Frida JavaScript API.
 - **ARM Android Optimization:** Scripts are specifically optimized for ARM Android devices with proper stability patterns.
-- **Interactive Script Tester:** Test and refine your prompts with the built-in Claude Bridge web interface.
+- **Interactive Script Tester:** Test and refine your prompts with the built-in Codex Bridge web interface.
 
 ### Application Management
 - **Dump APK/IPA From Device:** Extract APK (Android) or IPA (iOS) files from connected devices by selecting installed packages.
@@ -34,7 +34,7 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 
 ### User Experience
 - **Modern UI Design:** Clean and visually appealing user interface for better user experience.
-- **Docker Support:** Full containerization support with host bridge for Claude CLI access.
+- **Docker Support:** Full containerization support with host bridge for Codex CLI access.
 - **Cross-Platform:** Works on Windows, Linux, and macOS with proper dependency management.
 
 ## Feature Details
@@ -56,7 +56,7 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 - **ideviceinfo** (for iOS - [installation guide](https://command-not-found.com/ideviceinfo))
 
 ### AI Features (Optional)
-- **Claude CLI** (for AI-powered script generation - [get Claude Code](https://claude.ai/code))
+- **Codex CLI** (for AI-powered script generation - [setup guide](https://platform.openai.com/docs/quickstart))
 - **Ghidra MCP Server** (for binary analysis integration)
 - **JADX MCP Server** (for Android APK analysis)
 
@@ -96,28 +96,28 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
    docker-compose up --build
    ```
 
-2. **Start Claude Bridge (for AI features):**
+2. **Start Codex Bridge (for AI features):**
    ```bash
    # On host machine (Windows/Linux/macOS)
-   python claude-bridge.py
+   python codex-bridge.py
    ```
 
 3. **Access the Applications:**
    - **Frida Script Runner:** http://localhost:5000
-   - **Claude Bridge Tester:** http://localhost:8090
+   - **Codex Bridge Tester:** http://localhost:8091
 
 ### AI Setup (Optional)
 
 If you want to use AI-powered script generation:
 
-1. **Install Claude CLI:**
-   - Download from [Claude Code](https://claude.ai/code)
-   - Authenticate with your Claude account
+1. **Install Codex CLI:**
+   - Follow the [Codex CLI setup guide](https://platform.openai.com/docs/quickstart)
+   - Authenticate with your OpenAI account and ensure the `codex` command is available
 
 2. **Configure MCP Servers (Optional):**
    - Set up Ghidra MCP server for binary analysis
    - Configure JADX MCP server for APK analysis
-   - Update paths in `claude-bridge.py` if needed
+   - Update paths in `codex-bridge.py` if needed
 
 ## Usage
 
@@ -144,8 +144,8 @@ If you want to use AI-powered script generation:
    - Enter your request (e.g., "Hook the login function and log parameters")
    - Click "Generate Script" to create a custom Frida script
 
-2. **Using the Claude Bridge Tester:**
-   - Access http://localhost:8090 (when bridge is running)
+2. **Using the Codex Bridge Tester:**
+   - Access http://localhost:8091 (when bridge is running)
    - Test different prompts and refine your requests
    - Generated scripts are optimized for ARM Android devices
 
@@ -165,10 +165,10 @@ If you want to use AI-powered script generation:
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│   Web Interface     │    │  Claude Bridge      │    │   MCP Servers       │
+│   Web Interface     │    │  Codex Bridge      │    │   MCP Servers       │
 │   (Flask App)       │◄───┤  (AI Integration)   │◄───┤  (Binary Analysis)  │
 │                     │    │                     │    │                     │
-│ • Script Runner     │    │ • Claude CLI Proxy  │    │ • Ghidra Server     │
+│ • Script Runner     │    │ • Codex CLI Proxy  │    │ • Ghidra Server     │
 │ • Package Manager   │    │ • Prompt Engineering│    │ • JADX Server       │
 │ • Real-time Output  │    │ • MCP Client        │    │ • Function Analysis │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
@@ -188,7 +188,7 @@ If you want to use AI-powered script generation:
 ### Common Issues
 
 **Empty AI Response:**
-- Ensure Claude CLI is properly installed and authenticated
+- Ensure Codex CLI is properly installed and authenticated
 - Check that the bridge is using the correct command format (`--file` and `--prompt`)
 - Verify timeout settings (5 minutes default)
 
@@ -198,18 +198,18 @@ If you want to use AI-powered script generation:
 - Check ADB/USB debugging connection
 
 **MCP Server Issues:**
-- Update MCP server paths in `claude-bridge.py`
+- Update MCP server paths in `codex-bridge.py`
 - Ensure Ghidra/JADX servers are running and accessible
 - Check network connectivity and firewall settings
 
 **Docker Issues:**
 - Ensure bridge is running on host machine
-- Verify port forwarding (5000 for app, 8090 for bridge)
+- Verify port forwarding (5000 for app, 8091 for bridge)
 - Check Docker networking configuration
 
 ### Performance Tips
 
-- Use the Claude Bridge Tester to refine prompts before production use
+- Use the Codex Bridge Tester to refine prompts before production use
 - Enable MCP servers for more accurate script generation
 - Monitor ARM-specific patterns in generated scripts
 - Use 5-minute timeout for complex binary analysis requests
@@ -224,7 +224,7 @@ If you want to use AI-powered script generation:
 - `POST /get_packages` - List device packages
 - `POST /dump_apk` - Extract APK/IPA files
 
-### Claude Bridge Endpoints
+### Codex Bridge Endpoints
 
 - `GET /health` - Bridge health check
 - `POST /generate-script` - Generate Frida script
@@ -257,7 +257,7 @@ Contact the maintainer: [zenalarifin_](https://x.com/zenalarifin_)
 ### Special Thanks
 - **[Frida Project](https://frida.re/)** - Exceptional instrumentation toolkit
 - **[Frida-ios-dump](https://github.com/AloneMonkey/frida-ios-dump)** - IPA decryption tools
-- **[Anthropic Claude](https://claude.ai/)** - AI-powered script generation
+- **[OpenAI](https://openai.com/)** - Codex-powered script generation
 - **[MCP Servers](https://modelcontextprotocol.io/)** - Binary analysis integration
 
 ### Security Notice
