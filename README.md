@@ -114,10 +114,11 @@ If you want to use AI-powered script generation:
    - Follow the [Codex CLI setup guide](https://platform.openai.com/docs/quickstart)
    - Authenticate with your OpenAI account and ensure the `codex` command is available
 
-2. **Configure MCP Servers (Optional):**
+2. **Configure MCP Servers (MUST):**
    - Set up Ghidra MCP server for binary analysis
    - Configure JADX MCP server for APK analysis
    - Update paths in `codex-bridge.py` if needed
+   - Copy `.config.toml.example` to `.config.toml` and adjust MCP server paths for your setup
 
 ## Usage
 
