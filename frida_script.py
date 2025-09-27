@@ -17,7 +17,6 @@ import requests
 import shutil
 import lzma
 import wget
-import tempfile
 import subprocess
 
 sys.tracebacklimit = 0
@@ -34,19 +33,19 @@ frida_output_buffer = []
 current_script_path = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
-# Claude CLI and MCP Configuration
+# Codex bridge and MCP configuration
 GHIDRA_MCP_PATH = "D:/Irvan/Work/MCP/GhidraMCPFrida/bridge_mcp_ghidra.py"
 GHIDRA_SERVER_URL = "http://127.0.0.1:8080/"
 
-# For Docker environment, call host's Claude CLI
+# Resolve Codex bridge endpoint based on environment
 if os.path.exists("/.dockerenv"):
-    # Inside Docker - create a simple HTTP bridge to host's Claude CLI
-    CLAUDE_CLI_COMMAND = None  # Will use HTTP bridge
-    CLAUDE_HOST_URL = "http://host.docker.internal:8090"  # Bridge service
+    # Inside Docker - talk to host Codex bridge
+    CODEX_BRIDGE_URL = os.environ.get("CODEX_BRIDGE_URL", "http://host.docker.internal:8091")
 else:
-    # Native environment - also use HTTP bridge to avoid CLI compatibility issues
-    CLAUDE_CLI_COMMAND = None  # Will use HTTP bridge
-    CLAUDE_HOST_URL = "http://localhost:8090"  # Bridge service on same machine
+    # Native environment - default to local Codex bridge
+    CODEX_BRIDGE_URL = os.environ.get("CODEX_BRIDGE_URL", "http://localhost:8091")
+TEMP_SCRIPT_PATH = "temp_generated.js"
+
 
 def log_to_fsr_logs(message):
     """Send debug message to FSR Logs on web interface"""
@@ -1078,19 +1077,22 @@ def fix_script():
     global process, frida_output_buffer, current_script_path
     
     try:
-        # Check if a script is currently running
+        # Determine which script to fix
+        if current_script_path and os.path.exists(current_script_path):
+            script_path_to_fix = current_script_path
+        elif os.path.exists(TEMP_SCRIPT_PATH):
+            script_path_to_fix = os.path.abspath(TEMP_SCRIPT_PATH)
+        else:
+            return jsonify({"error": "No script available to fix. Generate a script first."}), 400
+
         if not process or process.poll() is not None:
-            return jsonify({"error": "No Frida script is currently running"}), 400
-        
-        if not current_script_path:
-            return jsonify({"error": "No script path available for fixing"}), 400
-        
-        if not os.path.exists(current_script_path):
-            return jsonify({"error": "Current script file not found"}), 400
-        
+            log_to_fsr_logs("[MANUAL-FIX] No active Frida process detected; proceeding with offline fix using saved script.")
+        else:
+            log_to_fsr_logs("[MANUAL-FIX] Active Frida process detected; will terminate after fix.")
+
         log_to_fsr_logs("[MANUAL-FIX] Manual script fix requested")
         socketio.emit("output", {"data": "\n[MANUAL-FIX] Manual script fix requested, analyzing errors...\n"})
-        
+
         # Extract error messages from output buffer
         error_messages = []
         for line in frida_output_buffer:
@@ -1105,24 +1107,25 @@ def fix_script():
             error_messages = ["No specific errors detected - general script fixing requested"]
         
         # Attempt to fix the script
-        fixed_script = attempt_script_autofix(current_script_path, error_messages, frida_output_buffer[-20:])
+        fixed_script = attempt_script_autofix(script_path_to_fix, error_messages, frida_output_buffer[-20:])
         
         if fixed_script:
-            # Kill current process
             if process and process.poll() is None:
                 process.terminate()
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-            
-            # Save the fixed script
-            with open(current_script_path, 'w') as f:
+
+            with open(script_path_to_fix, 'w', encoding='utf-8') as f:
                 f.write(fixed_script)
-            
+
+            if script_path_to_fix == os.path.abspath(TEMP_SCRIPT_PATH):
+                current_script_path = script_path_to_fix
+
             socketio.emit("output", {"data": "[MANUAL-FIX] Generated fixed script, updating UI...\n"})
             log_to_fsr_logs("[MANUAL-FIX] Successfully generated and applied fixed script")
-            
+
             # Return the fixed script content so UI can update the textarea
             return jsonify({
                 "success": True, 
@@ -1731,7 +1734,7 @@ def main():
 
 @app.route('/generate-frida-script', methods=['POST'])
 def generate_frida_script():
-    """Generate Frida script using Claude AI with Ghidra MCP integration"""
+    """Generate Frida script using Codex bridge with Ghidra MCP integration"""
     try:
         data = request.json
         if not data or 'prompt' not in data:
@@ -1743,7 +1746,7 @@ def generate_frida_script():
             
         log_to_fsr_logs(f"[DEBUG] Generating AI-powered Frida script for prompt: {prompt}")
         
-        # Generate Frida script using Claude CLI
+        # Generate Frida script using Codex bridge
         generated_script = generate_frida_script_from_prompt(prompt)
         
         log_to_fsr_logs(f"[DEBUG] Successfully generated AI-powered Frida script")
@@ -1751,7 +1754,7 @@ def generate_frida_script():
         return jsonify({
             'success': True,
             'script': generated_script,
-            'powered_by': 'Claude CLI + Ghidra MCP'
+            'powered_by': 'Codex Bridge + Ghidra MCP'
         })
         
     except Exception as e:
@@ -1761,191 +1764,143 @@ def generate_frida_script():
             'error': f'Failed to generate script: {str(e)}'
         }), 500
 
-def generate_frida_script_from_prompt(prompt):
-    """Generate Frida script using Claude CLI with Ghidra MCP integration"""
-    
+def read_temp_generated_script() -> str:
+    """Read the generated script from temp_generated.js when available."""
     try:
-        # Note: Ghidra context will be obtained by Claude via MCP tools
-        ghidra_context = "Claude will obtain this data directly via MCP tools - use list_functions(), list_strings(), etc."
-        
-        # Check if Claude CLI is available
-        if not is_claude_cli_available():
-            log_to_fsr_logs("[WARNING] Claude CLI not available, using fallback templates")
+        if os.path.exists(TEMP_SCRIPT_PATH):
+            with open(TEMP_SCRIPT_PATH, 'r', encoding='utf-8') as temp_file:
+                content = temp_file.read().strip()
+                if content:
+                    return content
+    except Exception as exc:
+        log_to_fsr_logs(f"[ERROR] Failed to read {TEMP_SCRIPT_PATH}: {exc}")
+    return ''
+
+
+def generate_frida_script_from_prompt(prompt):
+    """Generate Frida script using Codex bridge with Ghidra MCP integration"""
+
+    try:
+        if not is_codex_bridge_available():
+            log_to_fsr_logs("[WARNING] Codex bridge not available, using fallback templates")
             return generate_fallback_script(prompt)
-        
-        # Create temporary files for Claude interaction
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as temp_file:
-            # Write the prompt file for Claude with strict formatting rules
-        
-            temp_file.write(prompt)
-            temp_file.flush()
-            
-            log_to_fsr_logs("[DEBUG] Calling Claude CLI for script generation...")
-            
-            # Call Claude CLI (native) or HTTP bridge (Docker)
-            try:
-                if CLAUDE_CLI_COMMAND:
-                    # Native environment - call Claude CLI directly
-                    result = subprocess.run([
-                        CLAUDE_CLI_COMMAND, 
-                        "--file", temp_file.name,
-                        "--prompt", "Generate a Frida script based on the request in this file. Return only the JavaScript code."
-                    ], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=600,  # 5 minutes timeout
-                    cwd=os.getcwd()
-                    )
-                    
-                    if result.returncode == 0:
-                        generated_script = result.stdout.strip()
-                    else:
-                        log_to_fsr_logs(f"[ERROR] Claude CLI failed with return code {result.returncode}")
-                        log_to_fsr_logs(f"[ERROR] Claude CLI stderr: {result.stderr}")
-                        return generate_fallback_script(prompt)
-                else:
-                    # Docker environment - use HTTP bridge to host
-                    with open(temp_file.name, 'r') as f:
-                        file_content = f.read()
-                    
-                    response = requests.post(f"{CLAUDE_HOST_URL}/generate-script", 
-                                           json={"prompt": file_content}, 
-                                           timeout=600)  # 10 minutes timeout
-                    
-                    if response.status_code == 200:
-                        generated_script = response.json().get('script', '')
-                    else:
-                        log_to_fsr_logs(f"[ERROR] Claude bridge failed with status {response.status_code}")
-                        return generate_fallback_script(prompt)
-                
-                # Process the generated script
-                if generated_script:
-                    log_to_fsr_logs("[DEBUG] Claude generated Frida script successfully")
-                    cleaned_script = clean_claude_output(generated_script)
-                    return cleaned_script if cleaned_script else generate_fallback_script(prompt)
-                else:
-                    log_to_fsr_logs("[ERROR] Claude returned empty response")
-                    return generate_fallback_script(prompt)
-                    
-            except subprocess.TimeoutExpired:
-                log_to_fsr_logs("[ERROR] Claude CLI timed out")
-                return generate_fallback_script(prompt)
-            except Exception as e:
-                log_to_fsr_logs(f"[ERROR] Claude CLI execution failed: {str(e)}")
-                return generate_fallback_script(prompt)
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(temp_file.name)
-                except:
-                    pass
-        
-    except Exception as e:
-        log_to_fsr_logs(f"[ERROR] Claude CLI generation failed: {str(e)}")
+
+        log_to_fsr_logs("[DEBUG] Calling Codex bridge for script generation...")
+
+        response = call_codex_via_bridge(prompt)
+
+        if response.get("success"):
+            log_to_fsr_logs("[DEBUG] Codex bridge returned Frida script successfully")
+            script_from_file = read_temp_generated_script()
+            if script_from_file:
+                return script_from_file
+
+            cleaned_script = clean_codex_output(response.get("script", ""))
+            if cleaned_script:
+                log_to_fsr_logs("[WARNING] Falling back to Codex response body; temp_generated.js missing or empty")
+                return cleaned_script
+
+            log_to_fsr_logs("[ERROR] Codex response did not yield a usable script")
+            return generate_fallback_script(prompt)
+
+        error_msg = response.get("error", "Unknown bridge error")
+        log_to_fsr_logs(f"[ERROR] Codex bridge returned no script: {error_msg}")
+        return generate_fallback_script(prompt)
+
+    except Exception as exc:
+        log_to_fsr_logs(f"[ERROR] Codex bridge generation failed: {exc}")
         log_to_fsr_logs("[DEBUG] Falling back to template-based generation")
         return generate_fallback_script(prompt)
 
-def is_claude_cli_available():
-    """Check if Claude CLI is available on the system"""
+
+def is_codex_bridge_available():
+    """Check if Codex bridge is available on the system"""
     try:
-        if CLAUDE_CLI_COMMAND:
-            # Native environment - check CLI directly
-            result = subprocess.run([CLAUDE_CLI_COMMAND, "--version"], 
-                                  capture_output=True, text=True, timeout=5)
-            return result.returncode == 0
-        else:
-            # Docker environment - check if bridge is available
-            response = requests.get(f"{CLAUDE_HOST_URL}/health", timeout=5)
-            return response.status_code == 200
-    except:
+        response = requests.get(f"{CODEX_BRIDGE_URL}/health", timeout=5)
+        if response.status_code != 200:
+            return False
+        data = response.json()
+        return data.get("status") == "healthy"
+    except Exception:
         return False
 
-def clean_claude_output(output):
-    """Clean Claude CLI output to extract just the JavaScript code"""
-    lines = output.split('\n')
-    
-    # Remove common markdown artifacts
+
+def clean_codex_output(output):
+    """Clean Codex bridge output to extract just the JavaScript code"""
+    lines = output.splitlines()
+
     cleaned_lines = []
     in_code_block = False
     javascript_started = False
-    
+
     for line in lines:
-        # Skip markdown code block markers
-        if line.strip().startswith('```'):
+        if line.strip().startswith("```"):
             in_code_block = not in_code_block
             continue
-        
-        # Skip explanatory text before JavaScript code
+
         if not javascript_started:
-            # Look for JavaScript indicators
-            if any(indicator in line for indicator in ['Java.perform', 'setTimeout', 'console.log', 'Interceptor.', 'Module.', 'Process.', 'Java.use']):
+            if any(indicator in line for indicator in ["Java.perform", "setTimeout", "console.log", "Interceptor.", "Module.", "Process.", "Java.use"]):
                 javascript_started = True
-            elif line.strip().startswith('//') or line.strip().startswith('/*'):
+            elif line.strip().startswith("//") or line.strip().startswith("/*"):
                 javascript_started = True
-            elif line.strip() and not any(skip_word in line.lower() for skip_word in ['perfect', 'here', 'script', 'analysis', 'findings', 'features', 'usage', 'based on']):
-                # Might be start of JS code
+            elif line.strip() and not any(skip_word in line.lower() for skip_word in ["perfect", "here", "script", "analysis", "findings", "features", "usage", "based on"]):
                 javascript_started = True
-        
-        # If we've started collecting JavaScript, include the line
+
         if javascript_started:
-            # Skip obvious explanation lines
             if any(skip_phrase in line.lower() for skip_phrase in [
-                'perfect!', 'here\'s what', 'script does:', 'key findings', 'script features:', 
-                'usage:', '## ', '# ', 'frida -u', 'the script will', 'based on'
+                "perfect!", "here's what", "script does:", "key findings", "script features:",
+                "usage:", "## ", "# ", "frida -u", "the script will", "based on"
             ]):
                 continue
-                
-            # Skip empty lines at start
+
             if not cleaned_lines and not line.strip():
                 continue
-                
+
             cleaned_lines.append(line)
-    
-    # Remove trailing empty lines
+
     while cleaned_lines and not cleaned_lines[-1].strip():
         cleaned_lines.pop()
-    
-    result = '\n'.join(cleaned_lines)
-    
-    # If no valid content, return fallback
-    if not result.strip() or not any(indicator in result for indicator in ['Java.perform', 'setTimeout', 'console.log', 'Interceptor.', 'Module.']):
+
+    result = "\n".join(cleaned_lines)
+
+    if not result.strip() or not any(indicator in result for indicator in ["Java.perform", "setTimeout", "console.log", "Interceptor.", "Module."]):
         return None
-        
+
     return result
 
-def call_claude_via_bridge(prompt):
-    """Call Claude CLI via HTTP bridge for Docker environment"""
+
+def call_codex_via_bridge(prompt):
+    """Call Codex bridge for Frida script generation"""
     try:
-        import requests
-        response = requests.post(f"{CLAUDE_HOST_URL}/generate-script", 
-                               json={"prompt": prompt}, 
-                               timeout=600)  # 10 minutes timeout
-        
+        response = requests.post(
+            f"{CODEX_BRIDGE_URL}/generate-script",
+            json={"prompt": prompt},
+            timeout=600
+        )
         if response.status_code == 200:
             result_data = response.json()
             return {
-                'success': result_data.get('success', False),
-                'script': result_data.get('script', ''),
-                'error': result_data.get('error', '')
+                "success": result_data.get("success", False),
+                "script": result_data.get("script", ""),
+                "error": result_data.get("error", "")
             }
-        else:
-            return {
-                'success': False,
-                'script': '',
-                'error': f'Bridge failed with status {response.status_code}'
-            }
-    except Exception as e:
         return {
-            'success': False,
-            'script': '',
-            'error': f'Bridge request failed: {str(e)}'
+            "success": False,
+            "script": "",
+            "error": f"Bridge failed with status {response.status_code}"
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "script": "",
+            "error": f"Bridge request failed: {exc}"
         }
 
 def attempt_script_autofix(script_path, error_messages, output_log):
-    """Attempt to fix Frida script errors using Claude Bridge and temp_generated.js"""
+    """Attempt to fix Frida script errors using Codex Bridge and temp_generated.js"""
 
     try:
-        log_to_fsr_logs("[AUTO-FIX] Attempting to fix script using AI via Claude Bridge...")
+        log_to_fsr_logs("[AUTO-FIX] Attempting to fix script using AI via Codex bridge...")
 
         # Read the original failing script from temp_generated.js
         temp_script_path = "temp_generated.js"
@@ -1962,8 +1917,8 @@ def attempt_script_autofix(script_path, error_messages, output_log):
             log_to_fsr_logs(f"[AUTO-FIX] Fallback reading from {script_path}")
 
         # Extract recent Frida logs for context
-        error_summary = '\n'.join(error_messages[-5:]) if error_messages else "No specific errors detected"
-        output_summary = '\n'.join(output_log[-10:]) if output_log else "No additional output"
+        error_summary = "\n".join(error_messages) if error_messages else "No specific errors detected"
+        output_summary = "\n".join(output_log) if output_log else "No additional output"
 
         # Create minimal fix prompt - CLAUDE.md contains all the fix requirements
         fix_prompt = f"""Fix the Frida script errors in temp_generated.js based on these error logs:
@@ -1975,31 +1930,30 @@ Recent Output: {output_summary}
 Please read the current script from temp_generated.js, fix the errors, and update the file with the corrected version."""
 
         try:
-            # Call Claude Bridge to fix the script
-            response = call_claude_via_bridge(fix_prompt)
+            # Call Codex Bridge to fix the script
+            response = call_codex_via_bridge(fix_prompt)
 
-            if response and response.get('success') and response.get('script'):
-                fixed_script = response['script'].strip()
+            if response and response.get('success'):
+                script_from_file = read_temp_generated_script()
+                if script_from_file:
+                    log_to_fsr_logs(f"[AUTO-FIX] Successfully updated {temp_script_path}")
+                    log_to_fsr_logs(f"[AUTO-FIX] Fixed script length: {len(script_from_file)} chars")
+                    return script_from_file
 
-                if fixed_script and len(fixed_script) > 50:
-                    # Update temp_generated.js with the fixed script
-                    with open(temp_script_path, 'w') as f:
-                        f.write(fixed_script)
+                fallback_script = response.get('script', '').strip()
+                if fallback_script:
+                    log_to_fsr_logs("[AUTO-FIX] temp_generated.js missing; using Codex response body")
+                    return fallback_script
 
-                    log_to_fsr_logs(f"[AUTO-FIX] Successfully generated and saved fixed script to {temp_script_path}")
-                    log_to_fsr_logs(f"[AUTO-FIX] Fixed script length: {len(fixed_script)} chars")
-
-                    return fixed_script
-                else:
-                    log_to_fsr_logs("[AUTO-FIX] Generated script appears too short or empty")
-                    return None
+                log_to_fsr_logs("[AUTO-FIX] Codex bridge returned success but no script found")
+                return None
             else:
                 error_msg = response.get('error', 'Unknown bridge error') if response else 'No response from bridge'
-                log_to_fsr_logs(f"[AUTO-FIX] Claude Bridge failed: {error_msg}")
+                log_to_fsr_logs(f"[AUTO-FIX] Codex bridge failed: {error_msg}")
                 return None
 
         except Exception as e:
-            log_to_fsr_logs(f"[AUTO-FIX] Exception during Claude Bridge call: {str(e)}")
+            log_to_fsr_logs(f"[AUTO-FIX] Exception during Codex bridge call: {str(e)}")
             return None
 
     except Exception as e:
@@ -2145,7 +2099,7 @@ def get_ghidra_analysis_context():
         return f"Failed to connect to Ghidra server at {GHIDRA_SERVER_URL}. Error: {str(e)}\nEnsure Ghidra server is running and a binary is loaded."
 
 def generate_fallback_script(prompt):
-    """Fallback template-based generation when Claude AI is unavailable"""
+    """Fallback template-based generation when Codex AI is unavailable"""
     prompt_lower = prompt.lower()
     
     if any(keyword in prompt_lower for keyword in ['ssl', 'pinning', 'certificate', 'okhttp']):
