@@ -1125,6 +1125,8 @@ def fix_script():
             if script_path_to_fix == os.path.abspath(TEMP_SCRIPT_PATH):
                 current_script_path = script_path_to_fix
 
+            write_temp_generated_script(fixed_script)
+
             socketio.emit("output", {"data": "[MANUAL-FIX] Generated fixed script, updating UI...\n"})
             log_to_fsr_logs("[MANUAL-FIX] Successfully generated and applied fixed script")
 
@@ -1979,12 +1981,14 @@ Please read the current script from temp_generated.js, fix the errors, and updat
             if response and response.get('success'):
                 script_from_file = read_temp_generated_script()
                 if script_from_file:
+                    write_temp_generated_script(script_from_file)
                     log_to_fsr_logs(f"[AUTO-FIX] Successfully updated {temp_script_path}")
                     log_to_fsr_logs(f"[AUTO-FIX] Fixed script length: {len(script_from_file)} chars")
                     return script_from_file
 
                 fallback_script = response.get('script', '').strip()
                 if fallback_script:
+                    write_temp_generated_script(fallback_script)
                     log_to_fsr_logs("[AUTO-FIX] temp_generated.js missing; using Codex response body")
                     return fallback_script
 
