@@ -11,6 +11,7 @@ import os
 import sys
 import shutil
 import subprocess
+import time
 from typing import Optional
 
 
@@ -43,6 +44,8 @@ DEFAULT_CONFIG = {
 
 CONFIG = DEFAULT_CONFIG.copy()
 
+TEMP_SCRIPT_PATH = os.path.abspath(os.environ.get('TEMP_SCRIPT_PATH', 'temp_generated.js'))
+
 SYSTEM_PROMPT = (
     "You are an expert mobile security researcher and Frida specialist. "
     "Generate a single, production-ready Frida JavaScript script that satisfies the user prompt. "
@@ -72,6 +75,34 @@ def get_rule_text() -> str:
         _RULE_TEXT_CACHE = ''
 
     return _RULE_TEXT_CACHE or ''
+
+
+def read_temp_generated_script() -> str:
+    """Read script saved by Codex CLI if available."""
+    try:
+        if os.path.exists(TEMP_SCRIPT_PATH):
+            with open(TEMP_SCRIPT_PATH, 'r', encoding='utf-8') as temp_file:
+                content = temp_file.read().strip()
+                if content:
+                    print(f"[BRIDGE] Loaded script from {TEMP_SCRIPT_PATH} ({len(content)} chars)")
+                    return content
+    except Exception as exc:
+        print(f"[BRIDGE] Warning: Failed to read {TEMP_SCRIPT_PATH}: {exc}")
+    return ''
+
+
+def write_temp_generated_script(content: str) -> bool:
+    """Persist script output to temp_generated.js for downstream consumers."""
+    if not content:
+        return False
+    try:
+        with open(TEMP_SCRIPT_PATH, 'w', encoding='utf-8') as temp_file:
+            temp_file.write(content if content.endswith('\n') else f"{content}\n")
+        print(f"[BRIDGE] Wrote script to {TEMP_SCRIPT_PATH} ({len(content)} chars)")
+        return True
+    except Exception as exc:
+        print(f"[BRIDGE] Warning: Failed to write {TEMP_SCRIPT_PATH}: {exc}")
+        return False
 
 
 def build_prompt(user_prompt: str) -> str:
@@ -302,7 +333,19 @@ class CodexBridgeHandler(BaseHTTPRequestHandler):
 
             output = process.stdout.strip()
             print("[BRIDGE] Raw Codex Output:", output[:500])  # preview
-            return self.extract_javascript_code(output)
+
+            for attempt in range(3):
+                script_from_file = read_temp_generated_script()
+                if script_from_file:
+                    return script_from_file
+                time.sleep(0.1)
+
+            extracted = self.extract_javascript_code(output)
+            if extracted:
+                write_temp_generated_script(extracted)
+                return extracted
+
+            return ''
 
         except subprocess.TimeoutExpired:
             raise RuntimeError("Codex CLI timed out. Increase timeout value.")

@@ -1766,6 +1766,20 @@ def generate_frida_script():
             'error': f'Failed to generate script: {str(e)}'
         }), 500
 
+def write_temp_generated_script(content: str) -> bool:
+    """Persist provided script content to temp_generated.js."""
+    if not content:
+        return False
+    try:
+        with open(TEMP_SCRIPT_PATH, 'w', encoding='utf-8') as temp_file:
+            temp_file.write(content if content.endswith('\n') else f"{content}\n")
+        log_to_fsr_logs(f"[DEBUG] Wrote {TEMP_SCRIPT_PATH} ({len(content)} chars)")
+        return True
+    except Exception as exc:
+        log_to_fsr_logs(f"[ERROR] Failed to write {TEMP_SCRIPT_PATH}: {exc}")
+        return False
+
+
 def read_temp_generated_script() -> str:
     """Read the generated script from temp_generated.js when available."""
     try:
@@ -1785,7 +1799,9 @@ def generate_frida_script_from_prompt(prompt):
     try:
         if not is_codex_bridge_available():
             log_to_fsr_logs("[WARNING] Codex bridge not available, using fallback templates")
-            return generate_fallback_script(prompt)
+            fallback_script = generate_fallback_script(prompt)
+            write_temp_generated_script(fallback_script)
+            return fallback_script
 
         log_to_fsr_logs("[DEBUG] Calling Codex bridge for script generation...")
 
@@ -1793,26 +1809,39 @@ def generate_frida_script_from_prompt(prompt):
 
         if response.get("success"):
             log_to_fsr_logs("[DEBUG] Codex bridge returned Frida script successfully")
-            script_from_file = read_temp_generated_script()
-            if script_from_file:
-                return script_from_file
 
-            cleaned_script = clean_codex_output(response.get("script", ""))
+            raw_script = (response.get("script") or "").strip()
+            cleaned_script = clean_codex_output(raw_script) if raw_script else ""
+
             if cleaned_script:
-                log_to_fsr_logs("[WARNING] Falling back to Codex response body; temp_generated.js missing or empty")
+                stored = write_temp_generated_script(cleaned_script)
+                if stored:
+                    script_from_file = read_temp_generated_script()
+                    if script_from_file:
+                        return script_from_file
+
+                    log_to_fsr_logs("[WARNING] temp_generated.js missing or empty after write; returning cleaned Codex output")
+                else:
+                    log_to_fsr_logs("[WARNING] Failed to persist cleaned Codex output; returning in-memory copy")
                 return cleaned_script
 
-            log_to_fsr_logs("[ERROR] Codex response did not yield a usable script")
-            return generate_fallback_script(prompt)
+            log_to_fsr_logs("[ERROR] Codex response did not yield a usable script block")
+            fallback_script = generate_fallback_script(prompt)
+            write_temp_generated_script(fallback_script)
+            return fallback_script
 
         error_msg = response.get("error", "Unknown bridge error")
         log_to_fsr_logs(f"[ERROR] Codex bridge returned no script: {error_msg}")
-        return generate_fallback_script(prompt)
+        fallback_script = generate_fallback_script(prompt)
+        write_temp_generated_script(fallback_script)
+        return fallback_script
 
     except Exception as exc:
         log_to_fsr_logs(f"[ERROR] Codex bridge generation failed: {exc}")
         log_to_fsr_logs("[DEBUG] Falling back to template-based generation")
-        return generate_fallback_script(prompt)
+        fallback_script = generate_fallback_script(prompt)
+        write_temp_generated_script(fallback_script)
+        return fallback_script
 
 
 def is_codex_bridge_available():
@@ -1863,12 +1892,24 @@ def clean_codex_output(output):
     while cleaned_lines and not cleaned_lines[-1].strip():
         cleaned_lines.pop()
 
-    result = "\n".join(cleaned_lines)
-
-    if not result.strip() or not any(indicator in result for indicator in ["Java.perform", "setTimeout", "console.log", "Interceptor.", "Module."]):
+    result = "\n".join(cleaned_lines).strip()
+    if not result:
         return None
 
-    return result
+    allowed_markers = ("Java.perform", "setImmediate(", "setTimeout(", "void function", "(function", "Interceptor.attach", "Module.", "rpc.exports")
+
+    # Find earliest occurrence of a known JavaScript marker and trim to that point
+    start_index = None
+    for marker in allowed_markers:
+        idx = result.find(marker)
+        if idx != -1 and (start_index is None or idx < start_index):
+            start_index = idx
+
+    if start_index is not None:
+        trimmed = result[start_index:].strip()
+        return trimmed if trimmed else None
+
+    return None
 
 
 def call_codex_via_bridge(prompt):
