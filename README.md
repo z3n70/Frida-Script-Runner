@@ -5,7 +5,7 @@
 
 # Frida Script Runner
 
-Frida Script Runner v0.2.0 is a powerful web-based toolkit designed for Android and iOS penetration testing and mobile application security analysis.
+Frida Script Runner v1.0.0 is a powerful web-based toolkit designed for Android and iOS penetration testing and mobile application security analysis.
 
 This tool simplifies the process of interacting with Frida, providing a user-friendly interface through Flask to enhance the efficiency of penetration testing tasks. It features AI-powered script generation through Codex CLI integration with MCP (Model Context Protocol) servers for advanced binary analysis.
 
