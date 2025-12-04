@@ -166,10 +166,10 @@ If you want to use AI-powered script generation:
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│   Web Interface     │    │  Codex Bridge      │    │   MCP Servers       │
+│   Web Interface     │    │  Codex Bridge       │    │   MCP Servers       │
 │   (Flask App)       │◄───┤  (AI Integration)   │◄───┤  (Binary Analysis)  │
 │                     │    │                     │    │                     │
-│ • Script Runner     │    │ • Codex CLI Proxy  │    │ • Ghidra Server     │
+│ • Script Runner     │    │ • Codex CLI Proxy   │    │ • Ghidra Server     │
 │ • Package Manager   │    │ • Prompt Engineering│    │ • JADX Server       │
 │ • Real-time Output  │    │ • MCP Client        │    │ • Function Analysis │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
