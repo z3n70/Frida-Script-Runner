@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Optional: pin Frida client version at build time
+ARG FRIDA_VERSION=
+
 # Install system dependencies for frida and ADB
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -15,7 +18,8 @@ WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && if [ -n "${FRIDA_VERSION}" ]; then pip install --no-cache-dir --upgrade frida==${FRIDA_VERSION} frida-tools; fi
 
 # Copy application code
 COPY . .

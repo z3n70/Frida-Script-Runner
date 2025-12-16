@@ -39,7 +39,10 @@
                   {% endif %}
                 </div>
                 <div class="col-4 text-end">
-                  <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
+                  <div class="btn-group">
+                    <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
+                    <a class="btn btn-outline-secondary" href="/frida-server-manager" role="button">Frida Server Manager</a>
+                  </div>
                 </div>
               </div>
               
@@ -125,6 +128,12 @@
                   <select name="package" id="packageSelect" class="form-select" required>
                     <option disabled selected>Loading packages...</option>
                   </select>
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="attachModeCheckbox">
+                    <label class="form-check-label" for="attachModeCheckbox">
+                      Attach to running app (no restart)
+                    </label>
+                  </div>
                   <div class="mt-2">
                     <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadPackages()">
                       <i class="bi bi-arrow-clockwise"></i> Refresh Packages
@@ -206,6 +215,23 @@
                 <label for="script_content" class="form-label">Script Content</label>
                 <textarea class="form-control" name="script_content" id="scriptContent" rows="5" placeholder="Script Content" style="height: 150px;"></textarea>
               </div>
+
+              <div class="mb-3">
+                <label for="extraParams" class="form-label">Extra Frida CLI Parameters (optional)</label>
+                <input type="text" class="form-control" name="extra_params" id="extraParams" placeholder="e.g. --no-pause --runtime=v8">
+                <small class="text-muted">These will be appended to the frida command line.</small>
+              </div>
+
+              <div class="mb-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="1" name="use_custom_cli" id="useCustomCliCheckbox">
+                  <label class="form-check-label" for="useCustomCliCheckbox">
+                    Use fully custom Frida CLI
+                  </label>
+                </div>
+                <input type="text" class="form-control mt-2" name="custom_cli" id="customCliInput" placeholder="e.g. frida -U -f com.example.app -l /path/script.js --no-pause" disabled>
+                <small class="text-muted">When enabled, this exact command will be executed.</small>
+              </div>
     
               <div class="d-flex justify-content-between align-items-center">
                 <div class="form-check">
@@ -278,6 +304,13 @@
           <div class="cli-content-terminal p-2" id="clearOutput">
             <p class="wraptext mb-0" id="outputFrida"></p>
             <div id="output-list"></div>
+          </div>
+          <div class="p-2 border-top bg-transparent">
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="fridaInput" placeholder="Send command to Frida (e.g., %resume)" autocomplete="off">
+              <button class="btn btn-outline-primary" id="sendFridaBtn">Send</button>
+            </div>
+            <small class="text-muted">Send interactive commands to Frida after spawn (e.g., %resume).</small>
           </div>
         </div>
       </div>

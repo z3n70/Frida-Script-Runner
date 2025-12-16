@@ -5,10 +5,18 @@ var logOutput = document.getElementById("outputFrida");
 var runButton = document.getElementById("runBtn");
 var stopButton = document.getElementById("stopBtn");
 var fixButton = document.getElementById("fixBtn");
+var sendFridaBtn = document.getElementById("sendFridaBtn");
+var fridaInput = document.getElementById("fridaInput");
+var useCustomCliCheckbox = document.getElementById("useCustomCliCheckbox");
+var customCliInput = document.getElementById("customCliInput");
+var attachModeCheckbox = document.getElementById("attachModeCheckbox");
 
 runButton.disabled = false;
 stopButton.disabled = true;
 fixButton.style.display = "none";
+if (sendFridaBtn) sendFridaBtn.disabled = true;
+if (fridaInput) fridaInput.disabled = true;
+if (customCliInput) customCliInput.disabled = !(useCustomCliCheckbox && useCustomCliCheckbox.checked);
 
 socket.on('connected', function(data){
   console.log(data)
@@ -282,6 +290,9 @@ stopButton.addEventListener("click", function (event) {
       ).innerHTML += `</br><pre class="wraptext"> ${data}</pre>`;
     })
     .catch((error) => console.error(error));
+
+  if (sendFridaBtn) sendFridaBtn.disabled = true;
+  if (fridaInput) fridaInput.disabled = true;
 });
 
 fixButton.addEventListener("click", function (event) {
@@ -354,6 +365,8 @@ runButton.addEventListener("click", function (event) {
   runButton.disabled = true;
   stopButton.disabled = false;
   fixButton.style.display = "inline-block";
+  if (sendFridaBtn) sendFridaBtn.disabled = false;
+  if (fridaInput) fridaInput.disabled = false;
   var clearOutput = document.getElementById("clearOutput");
   clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`;
   runFrida();
@@ -366,12 +379,41 @@ function runFrida() {
 
   const formData = new FormData(form);
   const packageValue = formData.get('package');
+  const extraParams = (formData.get('extra_params') || '').trim();
+  const useCustomCli = (useCustomCliCheckbox && useCustomCliCheckbox.checked) ? true : false;
+  const customCli = (customCliInput && customCliInput.value) ? customCliInput.value.trim() : '';
+  const attachMode = (attachModeCheckbox && attachModeCheckbox.checked) ? true : false;
+  if (useCustomCli) {
+    formData.set('use_custom_cli', '1');
+    formData.set('custom_cli', customCli);
+  } else {
+    formData.delete('use_custom_cli');
+    formData.delete('custom_cli');
+  }
+  if (attachMode) {
+    formData.set('attach_mode', '1');
+  } else {
+    formData.delete('attach_mode');
+  }
   
   // Debug: Show what package is selected
-  console.log('Selected package:', packageValue);
-  appendContent(`Selected package: ${packageValue}`);
+  if (useCustomCli) {
+    console.log('Using custom CLI:', customCli);
+    appendContent(`Using custom CLI: ${customCli}`);
+  } else {
+    console.log('Selected package:', packageValue);
+    appendContent(`Selected package: ${packageValue}`);
+  }
+  if (extraParams) {
+    appendContent(`Extra params: ${extraParams}`);
+  }
+  if (attachMode) {
+    appendContent('Mode: Attach to running app (no spawn)');
+  } else if (!useCustomCli) {
+    appendContent('Mode: Spawn (will restart target)');
+  }
   
-  if (packageValue.includes('----') || !packageValue || packageValue === 'undefined'){
+  if (!useCustomCli && (packageValue.includes('----') || !packageValue || packageValue === 'undefined')){
     alert('Please select a valid package');
     runButton.disabled = false;
     stopButton.disabled = true;
@@ -396,6 +438,53 @@ function runFrida() {
         `</br><span class="text-success">~</span><pre class="wraptext">Error: ${error.message}</pre>`
       );
     });
+}
+
+// Toggle custom CLI input enable/disable
+if (useCustomCliCheckbox && customCliInput) {
+  useCustomCliCheckbox.addEventListener('change', function() {
+    customCliInput.disabled = !this.checked;
+    if (!this.checked) customCliInput.value = '';
+  });
+}
+
+// Send command to running Frida process
+function sendFridaInput() {
+  if (!fridaInput || !sendFridaBtn) return;
+  const value = (fridaInput.value || '').trim();
+  if (!value) return;
+  sendFridaBtn.disabled = true;
+  fetch('/send-frida-input', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: value })
+  })
+    .then(res => res.json())
+  .then(data => {
+    if (!data.success) {
+      appendContent(`Error sending to Frida: ${data.error || 'unknown error'}`);
+      }
+    })
+    .catch(err => {
+      appendContent(`Error: ${err.message}`);
+    })
+    .finally(() => {
+      fridaInput.value = '';
+      sendFridaBtn.disabled = false;
+      fridaInput.focus();
+    });
+}
+
+if (sendFridaBtn) {
+  sendFridaBtn.addEventListener('click', function() { sendFridaInput(); });
+}
+if (fridaInput) {
+  fridaInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendFridaInput();
+    }
+  });
 }
 function appendContent(content) {
   const outputContainer = document.getElementById("outputContainer");
@@ -705,6 +794,10 @@ document.addEventListener("DOMContentLoaded", function () {
   
   // Initial status refresh
   refreshFridaStatus();
+  // Auto-load packages using frida-ps with retry shortly after page load
+  setTimeout(() => {
+    try { loadPackagesWithRetry(3, 2000); } catch (e) { console.warn('Auto loadPackagesWithRetry failed', e); }
+  }, 800);
 });
 
 // Toggle Auto Generate Script Input

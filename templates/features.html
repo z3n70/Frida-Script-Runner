@@ -85,14 +85,14 @@
                 <div class="mb-3">
                   <label for="packageSelectAndroid" class="form-label">Select Package</label>
                   <select name="package" id="packageSelectAndroid" class="form-select" required>
-                    {% if packages %}
-                      {% for pkg in packages %}
-                        <option value="{{ pkg }}">{{ pkg }}</option>
-                      {% endfor %}
-                    {% else %}
-                      <option disabled>No packages detected</option>
-                    {% endif %}
+                    <option disabled>Loading packages...</option>
                   </select>
+                  <small class="text-muted">Search by app name or package </small>
+                  <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="refreshPackagesAndroid">
+                      <i class="bi bi-arrow-clockwise"></i> Refresh Packages
+                    </button>
+                  </div>
                 </div>
                 <div class="mb-3">
                   <label for="custom_name" class="form-label">Custom Filename</label>

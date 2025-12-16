@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, abort
+from flask import Flask, render_template, request, jsonify, send_file, abort, after_this_request
 from flask_socketio import SocketIO
 from colorama import Fore
 from werkzeug.utils import secure_filename
@@ -18,6 +18,7 @@ import shutil
 import lzma
 import wget
 import subprocess
+import shlex
 
 sys.tracebacklimit = 0
 
@@ -111,6 +112,209 @@ def get_device_platform(device_info):
     else:
         return "unknown"
 
+# -------------------- Frida Server Manager APIs --------------------
+@app.route('/frida-server-manager')
+def frida_server_manager_page():
+    """Render the Frida Server Manager page."""
+    try:
+        devices = there_is_adb_and_devices()
+        return render_template('frida_server_manager.html', devices=devices.get('available_devices', []))
+    except Exception as e:
+        return render_template('frida_server_manager.html', devices=[], error=str(e))
+
+@app.route('/api/adb/devices')
+def api_adb_devices():
+    """Return connected devices with Android architecture info where applicable."""
+    try:
+        info = there_is_adb_and_devices()
+        devices = []
+        for dev in info.get('available_devices', []):
+            dev_copy = dict(dev)
+            if 'device_id' in dev_copy:
+                try:
+                    arch = run_adb_command(["adb", "-s", dev_copy['device_id'], "shell", "getprop", "ro.product.cpu.abi"]) or ''
+                    dev_copy['architecture'] = arch.strip()
+                except Exception:
+                    dev_copy['architecture'] = 'unknown'
+            devices.append(dev_copy)
+        return jsonify({
+            'success': True,
+            'devices': devices,
+            'message': info.get('message', '')
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frida/releases')
+def api_frida_releases():
+    """Fetch Frida releases from GitHub and return a list of tag names."""
+    try:
+        releases_url = 'https://api.github.com/repos/frida/frida/releases'
+        resp = requests.get(releases_url, timeout=30)
+        tags = []
+        if resp.status_code == 200:
+            data = resp.json()
+            tags = [r.get('tag_name') for r in data if r.get('tag_name')]
+        else:
+            # Fallback to tags endpoint
+            tags_url = 'https://api.github.com/repos/frida/frida/tags'
+            r2 = requests.get(tags_url, timeout=30)
+            if r2.status_code == 200:
+                data = r2.json()
+                tags = [t.get('name') for t in data if t.get('name')]
+        # Normalize tags (strip leading 'refs/tags/' if any)
+        tags = [t.replace('refs/tags/', '') for t in tags]
+        # Keep last 50 entries as a decent selection
+        return jsonify({'success': True, 'releases': tags[:50]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frida/local')
+def api_frida_local():
+    """Return local Frida client and tools versions inside the container."""
+    try:
+        client_version = 'Unknown'
+        tools_version = 'Unknown'
+        py_core_version = 'Unknown'
+
+        try:
+            r = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=30)
+            if r.returncode == 0:
+                client_version = r.stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            r = subprocess.run([sys.executable, '-c', 'import pkgutil, pkg_resources;import sys;print(pkg_resources.get_distribution("frida-tools").version) if pkgutil.find_loader("pkg_resources") else sys.stdout.write("")'],
+                               capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and r.stdout.strip():
+                tools_version = r.stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            r = subprocess.run([sys.executable, '-c', 'import frida,sys;sys.stdout.write(frida.__version__)'],
+                               capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and r.stdout.strip():
+                py_core_version = r.stdout.strip()
+        except Exception:
+            pass
+
+        return jsonify({
+            'success': True,
+            'client_version': client_version,
+            'frida_tools_version': tools_version,
+            'frida_py_version': py_core_version,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/frida/set-client-version', methods=['POST'])
+def api_set_frida_client_version():
+    """Install a specific Frida client (Python frida) version inside the container.
+    Also upgrades frida-tools to keep CLI compatible."""
+    try:
+        data = request.get_json(force=True)
+        version = (data.get('version') or '').strip()
+        if not version:
+            return jsonify({'success': False, 'error': 'version is required'}), 400
+
+        # Install specific frida core version
+        cmd1 = [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '--upgrade', f'frida=={version}']
+        r1 = subprocess.run(cmd1, capture_output=True, text=True, timeout=600)
+        if r1.returncode != 0:
+            return jsonify({'success': False, 'error': f'pip error (frida=={version}): {r1.stderr or r1.stdout}'}), 500
+
+        # Upgrade frida-tools to latest compatible
+        cmd2 = [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '--upgrade', 'frida-tools']
+        r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=600)
+        if r2.returncode != 0:
+            # Not fatal; continue but report warning
+            log_to_fsr_logs(f"[FSM] Warning: upgrading frida-tools failed: {r2.stderr or r2.stdout}")
+
+        # Verify new version
+        r3 = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=60)
+        ver = r3.stdout.strip() if r3.returncode == 0 else 'Unknown'
+        return jsonify({'success': True, 'client_version': ver})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/start-frida-server-version', methods=['POST'])
+def start_frida_server_version():
+    """Start Frida server on a device using a specific version tag."""
+    try:
+        data = request.get_json(force=True)
+        device_id = data.get('device_id')
+        version = data.get('version')
+        if not device_id or not version:
+            return jsonify({'success': False, 'error': 'device_id and version are required'}), 400
+
+        adb_check = there_is_adb_and_devices()
+        if not adb_check.get('is_true'):
+            return jsonify({'success': False, 'error': 'No devices connected'}), 400
+
+        # Find target device
+        target = None
+        for d in adb_check.get('available_devices', []):
+            if d.get('device_id') == device_id:
+                target = d
+                break
+        if not target:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        # Only Android supported for server binary
+        if 'device_id' not in target:
+            return jsonify({'success': False, 'error': 'Only Android devices require frida-server binary'}), 400
+
+        # Determine arch
+        arch_raw = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.cpu.abi"]) or ''
+        clean_arch = arch_raw.strip().split('-')[0]
+        log_to_fsr_logs(f"[FSM] Device {device_id} arch: {arch_raw} -> {clean_arch}")
+
+        # Prepare local paths
+        os.makedirs('./frida-server/android', exist_ok=True)
+        frida_server_path = os.path.join('./frida-server/android', 'frida-server')
+        download_path = os.path.join('frida-server/android', 'frida-server-download.xz')
+
+        # Get release asset URL for given version
+        url = get_frida_server_url(clean_arch, version)
+        if not url:
+            return jsonify({'success': False, 'error': f'No asset found for version {version} arch {clean_arch}'}), 404
+
+        log_to_fsr_logs(f"[FSM] Downloading frida-server {version} for {clean_arch}")
+        wget.download(url, download_path)
+        with lzma.open(download_path) as src, open(frida_server_path, 'wb') as dst:
+            shutil.copyfileobj(src, dst)
+        if os.path.exists(download_path):
+            os.remove(download_path)
+
+        # Push binary and set perms
+        run_adb_command(["adb", "-s", device_id, "root"])
+        run_adb_push_command(device_id, frida_server_path, "/data/local/tmp/frida-server")
+        run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", "/data/local/tmp/frida-server"]) 
+
+        # Kill any existing frida processes
+        try:
+            run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
+        except Exception:
+            pass
+
+        # Start as root with fallbacks
+        try:
+            subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+        except subprocess.TimeoutExpired:
+            try:
+                subprocess.run(["adb", "-s", device_id, "shell", "su", "root", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+            except subprocess.TimeoutExpired:
+                subprocess.run(["adb", "-s", device_id, "shell", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+
+        time.sleep(3)
+        running = is_frida_server_running(device_id)
+        return jsonify({'success': True, 'running': running, 'device_id': device_id, 'version': version})
+    except Exception as e:
+        log_to_fsr_logs(f"[FSM] Error starting frida-server with version: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 def check_frida_versions():
     """Check Frida client and server versions for compatibility"""
     try:
@@ -197,31 +401,38 @@ def suggest_frida_fixes(device_id, architecture):
     log_to_fsr_logs(f"[TROUBLESHOOTING] 8. Then restart Frida server")
       
 # adb status and connect
-def run_adb_command(command, timeout=5, retries=1):
-    """Run ADB command with retry mechanism and configurable timeout"""
+def run_adb_command(command, timeout=5, retries=1, suppress_log=False):
+    """Run ADB command with retry mechanism and configurable timeout.
+    Set suppress_log=True for high-volume calls to reduce UI lag."""
     for attempt in range(retries + 1):
         try:
-            log_to_fsr_logs(f"[DEBUG] ADB command attempt {attempt + 1}/{retries + 1}: {' '.join(command)}")
+            if not suppress_log:
+                log_to_fsr_logs(f"[DEBUG] ADB command attempt {attempt + 1}/{retries + 1}: {' '.join(command)}")
             result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
             return result.stdout
         except subprocess.TimeoutExpired as e:
             if attempt < retries:
-                log_to_fsr_logs(f"[WARNING] ADB command timed out (attempt {attempt + 1}), retrying...")
+                if not suppress_log:
+                    log_to_fsr_logs(f"[WARNING] ADB command timed out (attempt {attempt + 1}), retrying...")
                 import time
                 time.sleep(2)  # Wait before retry
             else:
-                log_to_fsr_logs(f"[ERROR] ADB command timed out after {retries + 1} attempts: {' '.join(command)}")
+                if not suppress_log:
+                    log_to_fsr_logs(f"[ERROR] ADB command timed out after {retries + 1} attempts: {' '.join(command)}")
                 raise e
         except subprocess.CalledProcessError as e:
             if attempt < retries:
-                log_to_fsr_logs(f"[WARNING] ADB command failed (attempt {attempt + 1}), retrying...")
+                if not suppress_log:
+                    log_to_fsr_logs(f"[WARNING] ADB command failed (attempt {attempt + 1}), retrying...")
                 import time
                 time.sleep(2)  # Wait before retry
             else:
-                log_to_fsr_logs(f"[ERROR] ADB command failed after {retries + 1} attempts: {' '.join(command)}")
+                if not suppress_log:
+                    log_to_fsr_logs(f"[ERROR] ADB command failed after {retries + 1} attempts: {' '.join(command)}")
                 return f"Error: ADB command failed. {e}"
         except Exception as e:
-            log_to_fsr_logs(f"[ERROR] Unexpected error in ADB command: {e}")
+            if not suppress_log:
+                log_to_fsr_logs(f"[ERROR] Unexpected error in ADB command: {e}")
             return f"Error: ADB command failed. {e}"
     
     return f"Error: ADB command failed after {retries + 1} attempts"
@@ -613,6 +824,113 @@ def there_is_adb_and_devices():
 
     return {"is_true": adb_is_active, "available_devices": available_devices, "message": message}
 
+def get_android_app_label(device_id, package_name, timeout=5):
+    """Fetch the human-readable app label for a package via dumpsys.
+    Returns empty string if not found."""
+    try:
+        # dumpsys package output may be large; use run_adb_command wrapper
+        out = run_adb_command(["adb", "-s", device_id, "shell", "dumpsys", "package", package_name], timeout=timeout, suppress_log=True)
+        if not out:
+            return ""
+        label = ""
+        for line in out.splitlines():
+            line = line.strip()
+            if "application-label:" in line:
+                # Format: application-label:'My App'
+                parts = line.split("application-label:", 1)[1].strip()
+                label = parts.strip("'\"")
+                break
+            if "application-label-" in line and ":" in line:
+                # Locale-specific label, take the first encountered
+                parts = line.split(":", 1)[1].strip()
+                label = parts.strip("'\"")
+                break
+        return label
+    except Exception:
+        return ""
+
+ANDROID_LABEL_CACHE = {}
+
+def _parse_labels_from_dumpsys(all_text):
+    labels = {}
+    current_pkg = None
+    for raw in all_text.splitlines():
+        line = raw.strip()
+        if line.startswith('Package ['):
+            # Package [com.example.app] (xxx):
+            try:
+                current_pkg = line.split('[',1)[1].split(']')[0].strip()
+            except Exception:
+                current_pkg = None
+            continue
+        if current_pkg:
+            if line.startswith('application-label:'):
+                # application-label:'App Name'
+                try:
+                    label = line.split(':',1)[1].strip().strip("'\"")
+                    labels[current_pkg] = label
+                except Exception:
+                    pass
+                current_pkg = None
+            elif line.startswith('application-label-') and ':' in line:
+                try:
+                    label = line.split(':',1)[1].strip().strip("'\"")
+                    labels.setdefault(current_pkg, label)
+                except Exception:
+                    pass
+                current_pkg = None
+    return labels
+
+def _get_labels_map(device_id, max_age=300):
+    import time as _t
+    cache = ANDROID_LABEL_CACHE.get(device_id)
+    if cache and (_t.time() - cache.get('ts', 0) < max_age):
+        return cache.get('labels', {})
+    # Single large dump to parse labels for many packages at once
+    text = run_adb_command(["adb","-s",device_id,"shell","dumpsys","package"], timeout=30, suppress_log=True)
+    labels = _parse_labels_from_dumpsys(text or '')
+    ANDROID_LABEL_CACHE[device_id] = {'labels': labels, 'ts': _t.time()}
+    return labels
+
+def get_android_packages_with_labels(device_id):
+    """Return list of {package, label, display} for Android device."""
+    try:
+        pkgs_out = run_adb_command(["adb", "-s", device_id, "shell", "pm", "list", "packages"], suppress_log=True) or ""
+        packages = [line.split(":", 1)[1].strip() for line in pkgs_out.splitlines() if line.strip().startswith("package:")]
+        labels_map = _get_labels_map(device_id)
+        results = []
+        for pkg in packages:
+            label = labels_map.get(pkg) or ""
+            display = f"{label} - {pkg}" if label else pkg
+            results.append({
+                "package": pkg,
+                "label": label,
+                "display": display
+            })
+        return results
+    except Exception as e:
+        log_to_fsr_logs(f"[ERROR] get_android_packages_with_labels: {e}")
+        return []
+
+@app.route('/api/android/packages-with-labels')
+def api_android_packages_with_labels():
+    """API to provide Android packages with human-readable labels for client-side search."""
+    try:
+        devices = there_is_adb_and_devices()
+        if not devices.get("is_true"):
+            return jsonify({"success": False, "error": "No devices"}), 400
+        target = None
+        for d in devices.get("available_devices", []):
+            if "device_id" in d:
+                target = d
+                break
+        if not target:
+            return jsonify({"success": False, "error": "No Android device"}), 400
+        data = get_android_packages_with_labels(target["device_id"])
+        return jsonify({"success": True, "packages": data})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 def get_package_identifiers():
     try:
         log_to_fsr_logs(f"[DEBUG] Getting package identifiers using frida-ps...")
@@ -639,7 +957,16 @@ def get_package_identifiers():
             return []
         
         lines = result.stdout.strip().split('\n')[1:]
-        identifiers = [line.split()[1] + " - " + line.split()[-1]  for line in lines if len(line.split()) >= 3]
+        identifiers = []
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 3:
+                identifier = parts[-1]
+                # Join everything between PID and identifier as name (app label), preserves spaces
+                name = ' '.join(parts[1:-1])
+                if not name:
+                    name = identifier
+                identifiers.append(f"{name} - {identifier}")
         log_to_fsr_logs(f"[DEBUG] Found {len(identifiers)} packages")
         return identifiers
     except subprocess.TimeoutExpired:
@@ -732,11 +1059,15 @@ def features():
     if not device_info['is_true']:
         return render_template('no-usb.html', message=device_info['message'])
 
-    if device_info['available_devices'] and any('versi_andro' in dev for dev in device_info['available_devices']):
+    if device_info['available_devices'] and any('device_id' in dev for dev in device_info['available_devices']):
         try:
-            packages_output = subprocess.check_output(['adb', 'shell', 'pm', 'list', 'packages']).decode('utf-8')
-            packages = [pkg.split(':')[1].strip() for pkg in packages_output.split('\n') if pkg]
-        except subprocess.CalledProcessError as e:
+            # Use device-aware package fetch with labels
+            target = next((d for d in device_info['available_devices'] if 'device_id' in d), None)
+            if target:
+                packages = get_android_packages_with_labels(target['device_id'])
+            else:
+                packages = []
+        except Exception as e:
             message = f"Failed to get Android packages: {e}"
             
     if device_info['available_devices'] and any('UDID' in dev for dev in device_info['available_devices']):
@@ -746,7 +1077,18 @@ def features():
             message = f"Error getting iOS packages: {e}"
 
     if search_query:
-        packages = [pkg for pkg in packages if search_query in pkg.lower()]
+        # Support LIKE search by app name (label) or package name
+        filtered = []
+        for pkg in packages:
+            if isinstance(pkg, dict):
+                text = f"{pkg.get('label','')} {pkg.get('package','')} {pkg.get('display','')}".lower()
+                if search_query in text:
+                    filtered.append(pkg)
+            else:
+                if search_query in str(pkg).lower():
+                    filtered.append(pkg)
+        packages = filtered
+
         identifiers = [idf for idf in identifiers if search_query in idf.lower()]
 
     return render_template('features.html',packages=packages,identifiers=identifiers,message=message,devices=device_info['available_devices'])
@@ -763,48 +1105,90 @@ def apk_download():
     try:
         os.makedirs('tmp', exist_ok=True)
         
-        apk_paths = subprocess.check_output(
-            f"adb shell pm path {package_name}",
-            shell=True,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        
-        if not apk_paths:
-            return "Failed to get APK path", 500
+        # Pick Android device (first) if available
+        device_id = None
+        devices = there_is_adb_and_devices()
+        if devices.get('is_true'):
+            for d in devices.get('available_devices', []):
+                if 'device_id' in d:
+                    device_id = d['device_id']
+                    break
 
-        apk_path = apk_paths.strip().split('\n')[0].split(':')[1]
-        safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name) 
-        
-        if custom_name:
-            custom_name = re.sub(r'\.apk$', '', custom_name, flags=re.IGNORECASE)
-            apk_filename = f"{custom_name}.apk"
-        else:
-            apk_filename = f"{safe_package}.apk"
-            
-        temp_apk = os.path.join('tmp', apk_filename)
-        
-        pull_result = subprocess.run(
-            f"adb pull {apk_path} {temp_apk}",
-            shell=True,
-            capture_output=True,
-            text=True
-        )
+        # Query APK paths (pull all splits if present)
+        cmd_pm = ["adb"] + (["-s", device_id] if device_id else []) + ["shell", "pm", "path", package_name]
+        pm = subprocess.run(cmd_pm, capture_output=True, text=True)
+        if pm.returncode != 0 or not pm.stdout:
+            return f"Failed to get APK path: {pm.stderr or pm.stdout}", 500
 
-        if pull_result.returncode != 0:
-            return f"Failed to pull APK: {pull_result.stderr}", 500
+        lines = [l.strip() for l in pm.stdout.splitlines() if l.strip()]
+        pkg_lines = [l.split(":",1)[1] for l in lines if l.startswith("package:") and ":" in l]
+        if not pkg_lines:
+            return "Failed to parse APK path", 500
+        safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
 
-        return send_file(
-            temp_apk,
-            as_attachment=True,
-            download_name=apk_filename
-        )
+        # Pull all APKs into temp dir
+        temp_dir = os.path.join('tmp', f"{safe_package}_apks")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        pulled_files = []
+        for remote in pkg_lines:
+            basename = os.path.basename(remote)
+            dest = os.path.join(temp_dir, basename)
+            cmd_pull = ["adb"] + (["-s", device_id] if device_id else []) + ["pull", remote, dest]
+            pr = subprocess.run(cmd_pull, capture_output=True, text=True)
+            if pr.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 0:
+                pulled_files.append(dest)
+
+        if not pulled_files:
+            return "Failed to pull APK files", 500
+
+        if len(pulled_files) == 1:
+            # Single APK
+            single_file = pulled_files[0]
+            if custom_name:
+                base_name = re.sub(r'\\.apk$', '', custom_name, flags=re.IGNORECASE)
+                dn = base_name + '.apk'
+            else:
+                dn = os.path.basename(single_file)
+
+            @after_this_request
+            def _cleanup_single(resp):
+                try:
+                    if os.path.exists(single_file):
+                        os.remove(single_file)
+                    if os.path.isdir(temp_dir):
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                return resp
+
+            return send_file(single_file, as_attachment=True, download_name=dn)
+
+        # Multiple APKs (splits): zip
+        import zipfile
+        zip_basename = re.sub(r'\\.zip$', '', custom_name, flags=re.IGNORECASE) if custom_name else safe_package
+        zip_path = os.path.join('tmp', f"{zip_basename}.zip")
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for f in pulled_files:
+                zf.write(f, arcname=os.path.basename(f))
+
+        @after_this_request
+        def _cleanup_zip(resp):
+            try:
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+                if os.path.isdir(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            return resp
+
+        return send_file(zip_path, as_attachment=True, download_name=os.path.basename(zip_path))
 
     except Exception as e:
         return f"Error: {str(e)}", 500
     finally:
-        if 'temp_apk' in locals() and os.path.exists(temp_apk):
-            os.remove(temp_apk)
+        pass
             
 # install apk
 @app.route('/install-apk', methods=['POST'])
@@ -981,14 +1365,24 @@ def run_frida():
     global process, current_script_path
 
     try:
-        package = request.form['package']
+        # Optional fields
+        package = request.form.get('package', '').strip()
         if not 'use_custom_script' in request.form.keys():
             use_custom_script = False
         else:
                 use_custom_script = int(request.form['use_custom_script']) == 1
 
-        selected_script = request.form['selected_script']
-        script_content = request.form['script_content']
+        selected_script = request.form.get('selected_script', '')
+        script_content = request.form.get('script_content', '')
+        extra_params_raw = request.form.get('extra_params', '').strip()
+        try:
+            extra_args = shlex.split(extra_params_raw) if extra_params_raw else []
+        except Exception:
+            extra_args = []
+
+        use_custom_cli = 'use_custom_cli' in request.form
+        custom_cli = request.form.get('custom_cli', '').strip()
+        attach_mode = 'attach_mode' in request.form
 
         # Handle custom scripts or auto-generated scripts
         is_auto_generated = (selected_script == "auto_generate")
@@ -1009,14 +1403,52 @@ def run_frida():
         else:
             script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
 
+        # If using fully custom CLI
+        if use_custom_cli:
+            if not custom_cli:
+                return jsonify({"error": "Custom CLI selected but command is empty"}), 400
+
+            # If a custom script is provided or auto-generated, ensure the CLI uses it.
+            # Rules:
+            #  - If placeholder {script} or $SCRIPT exists, replace it with path
+            #  - Else if CLI lacks -l/--load, append -l <path>
+            #  - Otherwise leave as-is
+            final_cli = custom_cli
+            if (use_custom_script or is_auto_generated) and script_content:
+                # Ensure script file exists at script_path
+                try:
+                    resolved_script_path = os.path.abspath(script_path)
+                except Exception:
+                    resolved_script_path = script_path
+
+                if '{script}' in final_cli:
+                    final_cli = final_cli.replace('{script}', shlex.quote(resolved_script_path))
+                elif '$SCRIPT' in final_cli:
+                    final_cli = final_cli.replace('$SCRIPT', shlex.quote(resolved_script_path))
+                else:
+                    # Naive check for presence of -l/--load
+                    if (' -l ' not in f' {final_cli} ') and (' --load' not in final_cli):
+                        final_cli = f"{final_cli} -l {shlex.quote(resolved_script_path)}"
+
+                # Track current script path for fixing capabilities
+                current_script_path = resolved_script_path
+            else:
+                # No script involved in CLI, clear current_script_path so fix endpoint knows
+                current_script_path = None
+
+            if process and process.poll() is None:
+                process.terminate()
+
+            socketio.start_background_task(run_custom_cli_with_socketio, final_cli)
+            return jsonify({"result": f"Started Frida with custom CLI"}), 200
+
         # Track current script path for manual fixing
         current_script_path = os.path.abspath(script_path)
 
         if process and process.poll() is None:
             process.terminate()
 
-        socketio.start_background_task(run_frida_with_socketio, script_path, package)
-
+        socketio.start_background_task(run_frida_with_socketio, script_path, package, extra_args, attach_mode)
 
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
     except KeyboardInterrupt:
@@ -1025,15 +1457,34 @@ def run_frida():
         return jsonify({"error": f"Error: {e}"}), 500
 
     
-def run_frida_with_socketio(script_path, package):
+def run_frida_with_socketio(script_path, package, extra_args=None, attach_mode=False):
     global process, frida_output_buffer
 
     try:
         # Initialize output buffer for manual fix feature
         frida_output_buffer = []
         
-        command = ["frida", "-l", script_path, "-U", "-f", package]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+        if extra_args is None:
+            extra_args = []
+        if attach_mode:
+            command = ["frida", "-l", script_path, "-U", "-n", package] + list(extra_args)
+        else:
+            command = ["frida", "-l", script_path, "-U", "-f", package] + list(extra_args)
+
+        # Emit the final command to Frida Logs (with quoting for readability)
+        try:
+            cmd_str = ' '.join(shlex.quote(str(x)) for x in command)
+        except Exception:
+            cmd_str = ' '.join(str(x) for x in command)
+        socketio.emit("output", {"data": f"[CMD] {cmd_str}\n"})
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1
+        )
         
         while True:
             output = process.stdout.readline()
@@ -1057,6 +1508,66 @@ def run_frida_with_socketio(script_path, package):
         socketio.emit("output", {"data": "Frida process interrupted by user."})
     except Exception as e:
         socketio.emit("output", {"data": f"Error: {e}"})
+
+def run_custom_cli_with_socketio(command_str):
+    """Run a fully custom CLI command string (shell) and stream output to socketio."""
+    global process, frida_output_buffer
+    try:
+        frida_output_buffer = []
+        socketio.emit("output", {"data": f"[CMD] {command_str}\n"})
+        process = subprocess.Popen(
+            command_str,
+            shell=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1
+        )
+
+        while True:
+            output = process.stdout.readline()
+            if output == "" and process.poll() is not None:
+                break
+            if output:
+                output_clean = output.replace('\n','')
+                frida_output_buffer.append(output_clean)
+                if len(frida_output_buffer) > 100:
+                    frida_output_buffer = frida_output_buffer[-100:]
+                if args.verbose:
+                    print(output_clean)
+                socketio.emit("output", {"data": output})
+                time.sleep(0.010)
+        socketio.emit("output", {"data": "Frida process finished."})
+    except Exception as e:
+        socketio.emit("output", {"data": f"Error: {e}"})
+
+@app.route('/send-frida-input', methods=['POST'])
+def send_frida_input():
+    """Send a command to the running Frida CLI process (e.g., %resume)."""
+    global process
+    try:
+        if not process or process.poll() is not None:
+            return jsonify({"success": False, "error": "Frida process is not running"}), 400
+        if process.stdin is None:
+            return jsonify({"success": False, "error": "Frida process stdin is not available"}), 500
+
+        data = request.get_json(force=True)
+        user_input = (data.get('input') or '').strip()
+        if not user_input:
+            return jsonify({"success": False, "error": "Input is empty"}), 400
+
+        try:
+            process.stdin.write(user_input + "\n")
+            process.stdin.flush()
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Failed to write to Frida: {e}"}), 500
+
+        # Echo to Frida Logs for visibility
+        socketio.emit("output", {"data": f">> {user_input}\n"})
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @socketio.on("connect")
 def handle_connect():
