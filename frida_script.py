@@ -33,14 +33,9 @@ frida_output_buffer = []
 current_script_path = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 
-# Codex bridge configuration
-
-# Resolve Codex bridge endpoint based on environment
 if os.path.exists("/.dockerenv"):
-    # Inside Docker - talk to host Codex bridge
     CODEX_BRIDGE_URL = "http://host.docker.internal:8091"
 else:
-    # Native environment - default to local Codex bridge
     CODEX_BRIDGE_URL = "http://localhost:8091"
 TEMP_SCRIPT_PATH = "temp_generated.js"
 
@@ -114,16 +109,12 @@ def get_device_platform(device_info):
 def check_frida_versions():
     """Check Frida client and server versions for compatibility"""
     try:
-        # Get Frida client version
         client_result = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=600)
         client_version = client_result.stdout.strip() if client_result.returncode == 0 else "Unknown"
-        
-        # Try to get server version
         server_result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=600)
         server_version = "Unknown"
         
         if server_result.returncode == 0 and server_result.stdout:
-            # Look for version info in output
             for line in server_result.stdout.split('\n'):
                 if 'Frida' in line and 'version' in line.lower():
                     server_version = line.strip()
@@ -132,14 +123,12 @@ def check_frida_versions():
         log_to_fsr_logs(f"[DEBUG] Frida client version: {client_version}")
         log_to_fsr_logs(f"[DEBUG] Frida server version: {server_version}")
         
-        # Check for version mismatch
         if client_version != "Unknown" and server_version != "Unknown":
             if client_version != server_version:
                 log_to_fsr_logs(f"[WARNING] Version mismatch detected!")
                 log_to_fsr_logs(f"[WARNING] Client: {client_version}, Server: {server_version}")
                 log_to_fsr_logs(f"[WARNING] This will cause 'system_server' errors")
                 
-                # Check if client version exists on GitHub
                 if client_version != "Unknown":
                     log_to_fsr_logs(f"[DEBUG] Checking if version {client_version} exists on GitHub...")
                     try:
@@ -159,7 +148,6 @@ def check_frida_versions():
 
 def suggest_frida_fixes(device_id, architecture):
     """Suggest fixes for common Frida issues"""
-    # Get client version for specific advice
     client_version, server_version = check_frida_versions()
     
     log_to_fsr_logs(f"[TROUBLESHOOTING] Common Frida fixes to try:")
@@ -171,14 +159,13 @@ def suggest_frida_fixes(device_id, architecture):
             log_to_fsr_logs(f"[TROUBLESHOOTING] 3. VERSION MISMATCH: Client {client_version} vs Server {server_version}")
             log_to_fsr_logs(f"[TROUBLESHOOTING] 4. Use 'Restart Frida Server' to download matching version")
             
-            # Check available versions
             log_to_fsr_logs(f"[DEBUG] Checking available Frida versions on GitHub...")
             try:
                 releases_url = 'https://api.github.com/repos/frida/frida/releases'
                 releases_response = requests.get(releases_url)
                 if releases_response.status_code == 200:
                     releases = releases_response.json()
-                    available_versions = [release['tag_name'] for release in releases[:5]]  # Last 5 releases
+                    available_versions = [release['tag_name'] for release in releases[:5]] 
                     log_to_fsr_logs(f"[DEBUG] Recent available versions: {', '.join(available_versions)}")
                     
                     if client_version in available_versions:
@@ -208,7 +195,7 @@ def run_adb_command(command, timeout=5, retries=1):
             if attempt < retries:
                 log_to_fsr_logs(f"[WARNING] ADB command timed out (attempt {attempt + 1}), retrying...")
                 import time
-                time.sleep(2)  # Wait before retry
+                time.sleep(2)  
             else:
                 log_to_fsr_logs(f"[ERROR] ADB command timed out after {retries + 1} attempts: {' '.join(command)}")
                 raise e
@@ -216,7 +203,7 @@ def run_adb_command(command, timeout=5, retries=1):
             if attempt < retries:
                 log_to_fsr_logs(f"[WARNING] ADB command failed (attempt {attempt + 1}), retrying...")
                 import time
-                time.sleep(2)  # Wait before retry
+                time.sleep(2) 
             else:
                 log_to_fsr_logs(f"[ERROR] ADB command failed after {retries + 1} attempts: {' '.join(command)}")
                 return f"Error: ADB command failed. {e}"
@@ -268,7 +255,6 @@ def run_ideviceinfo(timeout=5):
 
 def get_frida_server_url(architecture, version=None):
     if version:
-        # Frida release tags use format like "17.2.9" but need to check if it exists
         url = f'https://api.github.com/repos/frida/frida/releases/tags/{version}'
         log_to_fsr_logs(f"[DEBUG] Requesting specific version: {version}")
     else:
@@ -280,18 +266,15 @@ def get_frida_server_url(architecture, version=None):
         response.raise_for_status()
         release_data = response.json()
         
-        # Log the actual release being used
         if version:
             log_to_fsr_logs(f"[DEBUG] Using release: {release_data.get('tag_name', 'Unknown')}")
         else:
             log_to_fsr_logs(f"[DEBUG] Using latest release: {release_data.get('tag_name', 'Unknown')}")
         
-        # Clean architecture string - take only the first part before dash
         clean_arch = architecture.strip().split('-')[0]
         log_to_fsr_logs(f"[DEBUG] Original architecture: {architecture}")
         log_to_fsr_logs(f"[DEBUG] Cleaned architecture: {clean_arch}")
         
-        # Debug: Show all available frida-server assets
         log_to_fsr_logs(f"[DEBUG] Available frida-server assets:")
         frida_assets = []
         for asset in release_data['assets']:
@@ -299,7 +282,6 @@ def get_frida_server_url(architecture, version=None):
                 frida_assets.append(asset['name'])
                 log_to_fsr_logs(f"[DEBUG]   - {asset['name']}")
         
-        # Search for matching architecture
         for asset in release_data['assets']:
             if 'frida-server' in asset['name'] and f'android-{clean_arch}' in asset['name']:
                 log_to_fsr_logs(f"[+] Found frida-server: {asset['browser_download_url']}")
@@ -313,7 +295,6 @@ def get_frida_server_url(architecture, version=None):
         if e.response.status_code == 404:
             log_to_fsr_logs(f"[ERROR] Version {version} not found on GitHub")
             log_to_fsr_logs(f"[DEBUG] Falling back to latest version")
-            # Fall back to latest version if specific version not found
             return get_frida_server_url(architecture, None)
         else:
             log_to_fsr_logs(f"[ERROR] GitHub API error: {e}")
@@ -324,14 +305,12 @@ def get_frida_server_url(architecture, version=None):
 
 def frida_server_installed(device_id):
     try:
-        # Use longer timeout for emulators
         timeout = 15 if "emulator" in device_id else 5
         result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"], timeout=timeout)
-        # Check for any frida-server file (with version or without)
         frida_files = [line for line in result.split('\n') if 'frida-server' in line]
         if frida_files:
             log_to_fsr_logs(f"[DEBUG] Found Frida server files on device: {frida_files}")
-            return frida_files[0].strip()  # Return the first frida-server file found
+            return frida_files[0].strip()  
         return False
     except subprocess.CalledProcessError:
         return False
@@ -341,7 +320,6 @@ def clean_frida_server_files(device_id):
     try:
         log_to_fsr_logs(f"[DEBUG] Cleaning all Frida server files from device...")
         
-        # Get list of all frida-server files
         timeout = 15 if "emulator" in device_id else 5
         result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"], timeout=timeout)
         frida_files = [line.strip() for line in result.split('\n') if 'frida-server' in line]
@@ -349,7 +327,6 @@ def clean_frida_server_files(device_id):
         if frida_files:
             log_to_fsr_logs(f"[DEBUG] Found {len(frida_files)} Frida server files to remove: {frida_files}")
             
-            # Remove each file
             for file in frida_files:
                 try:
                     run_adb_command(["adb", "-s", device_id, "shell", "rm", f"/data/local/tmp/{file}"])
@@ -357,7 +334,6 @@ def clean_frida_server_files(device_id):
                 except Exception as e:
                     log_to_fsr_logs(f"[WARNING] Failed to remove {file}: {e}")
             
-            # Verify removal
             verify_result = run_adb_command(["adb", "-s", device_id, "shell", "ls", "/data/local/tmp/"])
             remaining_files = [line.strip() for line in verify_result.split('\n') if 'frida-server' in line]
             
@@ -375,26 +351,22 @@ def is_frida_server_running(device_id):
     try:
         log_to_fsr_logs(f"[DEBUG] Checking if Frida server is running on device: {device_id}")
         
-        # Use longer timeout for emulators
         timeout = 15 if "emulator" in device_id else 5
         
-        # Method 1: Check process list (most reliable) - REQUIRED
         result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"], timeout=timeout)
         if "frida-server" in result:
             log_to_fsr_logs(f"[DEBUG] [OK] Frida server found in process list")
             
-            # Get the PID and verify it's actually frida-server
             try:
                 ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
                 if ps_result:
                     lines = ps_result.strip().split('\n')
                     for line in lines:
-                        if 'frida-server' in line and 'frida-server' in line.split()[-1]:  # Make sure it's actually frida-server
+                        if 'frida-server' in line and 'frida-server' in line.split()[-1]: 
                             parts = line.split()
                             if len(parts) >= 2:
                                 pid = parts[1]
                                 if pid.isdigit():
-                                    # Check user of the process
                                     user_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-o", "user=", "-p", pid])
                                     user = user_result.strip()
                                     log_to_fsr_logs(f"[DEBUG] Frida server PID {pid} running as user: {user}")
@@ -409,14 +381,13 @@ def is_frida_server_running(device_id):
                                         return False
                                 else:
                                     log_to_fsr_logs(f"[WARNING] Invalid PID format: {pid}")
-                                    return True  # Assume running if we can't parse PID
+                                    return True  
             except Exception as e:
                 log_to_fsr_logs(f"[DEBUG] Could not verify user: {e}, assuming running")
                 return True
         else:
             log_to_fsr_logs(f"[DEBUG] [X] Frida server not found in process list")
         
-        # Method 2: Check port 27042 (Android-specific) - REQUIRED
         port_check_commands = [
             ["adb", "-s", device_id, "shell", "netstat", "-tunlp"],
             ["adb", "-s", device_id, "shell", "ss", "-tunlp"],
@@ -435,7 +406,6 @@ def is_frida_server_running(device_id):
         
         log_to_fsr_logs(f"[DEBUG] [X] Frida server not listening on port 27042")
         
-        # If both process list and port check fail, server is NOT running
         log_to_fsr_logs(f"[DEBUG] [X] Frida server not detected by process list or port check")
         log_to_fsr_logs(f"[DEBUG] [X] Server is NOT running (ignoring frida-ps results)")
         return False
@@ -463,7 +433,7 @@ def download_and_push_frida(architecture, os_type, version=None):
                     
                     import time
                     file_age = time.time() - os.path.getmtime(frida_server_path)
-                    if file_age < 86400:  # 24 hours in seconds
+                    if file_age < 86400:  
                         print(f"[=] Frida server for {os_type} exists and is recent (< 24h), skipping download.")
                         print(f"[i] To force download latest version, use: --runw {os_type} {latest_version} or --runw {os_type} --force-download")
                         should_download = False
@@ -488,7 +458,6 @@ def download_and_push_frida(architecture, os_type, version=None):
         with lzma.open(download_path) as src, open(frida_server_path, 'wb') as dst:
             shutil.copyfileobj(src, dst)
         
-        # Clean up downloaded file
         if os.path.exists(download_path):
             os.remove(download_path)
         
@@ -554,11 +523,9 @@ def push_and_run_fs(runw_args):
     os_type = runw_args[0]
     version = None
     
-    # Parse arguments
     if len(runw_args) > 1:
-        # Check if second argument is version or force-download flag
         if runw_args[1] == "--force-download":
-            version = None  # Will use latest version
+            version = None  
         else:
             version = runw_args[1]
 
@@ -597,7 +564,6 @@ def there_is_adb_and_devices():
     except Exception as e:
         message = f"Error checking Android device connectivity: {e}"
     else:
-        # for ios use ideviceinfo
         try:
             ideviceinfo_output = run_ideviceinfo()
             if ideviceinfo_output:
@@ -618,11 +584,9 @@ def get_package_identifiers():
         log_to_fsr_logs(f"[DEBUG] Getting package identifiers using frida-ps...")
         result = subprocess.run(['frida-ps', '-Uai'], capture_output=True, text=True, timeout=10)
         
-        # Log the full stderr for debugging
         if result.stderr:
             log_to_fsr_logs(f"[DEBUG] frida-ps stderr: {result.stderr.strip()}")
         
-        # Check for common Frida errors
         if result.stderr and "system_server" in result.stderr:
             log_to_fsr_logs(f"[ERROR] Frida system_server error: {result.stderr.strip()}")
             log_to_fsr_logs(f"[DEBUG] This usually indicates version mismatch or architecture issues")
@@ -684,14 +648,12 @@ def index():
     adb_check = there_is_adb_and_devices()
     if adb_check["is_true"]:
         try:
-            # Don't get packages initially - they will be loaded dynamically when Frida server is running
             bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
             
-            # Get Frida server status for connected devices
             frida_status = {}
             if adb_check["available_devices"]:
                 for device in adb_check["available_devices"]:
-                    if "device_id" in device:  # Android device
+                    if "device_id" in device: 
                         device_id = device["device_id"]
                         installed_status = frida_server_installed(device_id)
                         frida_status[device_id] = {
@@ -702,14 +664,14 @@ def index():
                         }
                     elif "UDID" in device:  # iOS device
                         frida_status[device["UDID"]] = {
-                            "installed": True,  # iOS doesn't need separate server installation
+                            "installed": True,  
                             "frida_server_name": None,
-                            "running": True,    # iOS uses different mechanism
+                            "running": True,    
                             "device_info": device
                         }
             
             return render_template('index.html', 
-                                identifiers=[],  # Empty initially, will be loaded dynamically
+                                identifiers=[], 
                                 bypass_scripts_android=bypass_scripts_1, 
                                 bypass_scripts_ios=bypass_scripts_2,
                                 devices=adb_check,
@@ -919,15 +881,12 @@ def get_device_packages():
 def get_packages():
     """Get packages when Frida server is running"""
     try:
-        # Check if any device is connected
         adb_check = there_is_adb_and_devices()
         if not adb_check["is_true"]:
             return jsonify({"error": "No devices connected"}), 400
         
-        # Check Frida versions first
         client_version, server_version = check_frida_versions()
         
-        # Try to get packages directly - if Frida server is running, this will work
         log_to_fsr_logs(f"[DEBUG] Attempting to get packages...")
         identifiers = get_package_identifiers()
         
@@ -937,7 +896,6 @@ def get_packages():
                 "packages": identifiers
             })
         else:
-            # If no packages found, check if Frida server is running
             frida_running = False
             device_type = "unknown"
             
@@ -949,8 +907,6 @@ def get_packages():
                         break
                 elif "UDID" in device:  # iOS device
                     device_type = "ios"
-                    # For iOS, we assume Frida is available if device is connected
-                    # iOS doesn't need a separate server like Android
                     frida_running = True
                     break
             
@@ -960,9 +916,7 @@ def get_packages():
                 else:
                     return jsonify({"error": "Unable to connect to device. Please check device connection."}), 400
             else:
-                # Frida server is running but no packages found - suggest fixes
                 if device_type == "android":
-                    # Get device info for troubleshooting
                     device_info = adb_check["available_devices"][0]
                     if "device_id" in device_info:
                         architecture = run_adb_command(["adb", "-s", device_info["device_id"], "shell", "getprop", "ro.product.cpu.abi"])
@@ -990,7 +944,6 @@ def run_frida():
         selected_script = request.form['selected_script']
         script_content = request.form['script_content']
 
-        # Handle custom scripts or auto-generated scripts
         is_auto_generated = (selected_script == "auto_generate")
         
         if use_custom_script or is_auto_generated:
@@ -1009,7 +962,6 @@ def run_frida():
         else:
             script_path = os.path.join(SCRIPTS_DIRECTORY, selected_script)
 
-        # Track current script path for manual fixing
         current_script_path = os.path.abspath(script_path)
 
         if process and process.poll() is None:
@@ -1029,7 +981,6 @@ def run_frida_with_socketio(script_path, package):
     global process, frida_output_buffer
 
     try:
-        # Initialize output buffer for manual fix feature
         frida_output_buffer = []
         
         command = ["frida", "-l", script_path, "-U", "-f", package]
@@ -1043,7 +994,6 @@ def run_frida_with_socketio(script_path, package):
                 output_clean = output.replace('\n','')
                 frida_output_buffer.append(output_clean)
                 
-                # Keep buffer manageable (last 100 lines)
                 if len(frida_output_buffer) > 100:
                     frida_output_buffer = frida_output_buffer[-100:]
                 
@@ -1079,7 +1029,6 @@ def fix_script():
     global process, frida_output_buffer, current_script_path
     
     try:
-        # Determine which script to fix
         if current_script_path and os.path.exists(current_script_path):
             script_path_to_fix = current_script_path
         elif os.path.exists(TEMP_SCRIPT_PATH):
@@ -1095,7 +1044,6 @@ def fix_script():
         log_to_fsr_logs("[MANUAL-FIX] Manual script fix requested")
         socketio.emit("output", {"data": "\n[MANUAL-FIX] Manual script fix requested, analyzing errors...\n"})
 
-        # Extract error messages from output buffer
         error_messages = []
         for line in frida_output_buffer:
             if any(error_keyword in line.lower() for error_keyword in [
@@ -1108,7 +1056,6 @@ def fix_script():
         if not error_messages:
             error_messages = ["No specific errors detected - general script fixing requested"]
         
-        # Attempt to fix the script
         fixed_script = attempt_script_autofix(script_path_to_fix, error_messages, frida_output_buffer[-20:])
         
         if fixed_script:
@@ -1130,7 +1077,6 @@ def fix_script():
             socketio.emit("output", {"data": "[MANUAL-FIX] Generated fixed script, updating UI...\n"})
             log_to_fsr_logs("[MANUAL-FIX] Successfully generated and applied fixed script")
 
-            # Return the fixed script content so UI can update the textarea
             return jsonify({
                 "success": True, 
                 "message": "Script fixed successfully. Updated script content - please restart manually.",
@@ -1161,7 +1107,7 @@ def frida_server_status():
                 running_status = is_frida_server_running(device_id)
                 
                 status_info[device_id] = {
-                    "installed": bool(installed_status),  # Convert to boolean
+                    "installed": bool(installed_status),  
                     "frida_server_name": installed_status if installed_status else None,
                     "running": running_status,
                     "device_info": device
@@ -1194,6 +1140,49 @@ def force_refresh_status():
         log_to_fsr_logs(f"[ERROR] Exception in force_refresh_status: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/check-device-status')
+def check_device_status():
+    """Check USB/device connection status for dynamic scanning"""
+    try:
+        adb_check = there_is_adb_and_devices()
+        devices_info = []
+        
+        if adb_check["is_true"] and adb_check["available_devices"]:
+            for device in adb_check["available_devices"]:
+                device_info = {
+                    "connected": True,
+                    "type": "Android" if "device_id" in device else "iOS"
+                }
+                
+                if "device_id" in device:
+                    device_info.update({
+                        "model": device.get("model", "Unknown"),
+                        "serial_number": device.get("serial_number", "N/A"),
+                        "android_version": device.get("versi_andro", "N/A"),
+                        "device_id": device.get("device_id", "")
+                    })
+                elif "UDID" in device:
+                    device_info.update({
+                        "model": device.get("model", "Unknown"),
+                        "udid": device.get("UDID", ""),
+                    })
+                
+                devices_info.append(device_info)
+        
+        return jsonify({
+            "connected": adb_check["is_true"],
+            "device_count": len(devices_info),
+            "devices": devices_info,
+            "message": adb_check.get("message", "")
+        })
+    except Exception as e:
+        return jsonify({
+            "connected": False,
+            "device_count": 0,
+            "devices": [],
+            "message": f"Error checking device status: {str(e)}"
+        }), 500
+
 @app.route('/start-frida-server', methods=['POST'])
 def start_frida_server():
     """Start Frida server on connected devices"""
@@ -1212,7 +1201,6 @@ def start_frida_server():
         if not adb_check["is_true"]:
             return jsonify({"error": "No devices connected"}), 400
         
-        # Find the device
         target_device = None
         for device in adb_check["available_devices"]:
             if device.get("device_id") == device_id or device.get("UDID") == device_id:
@@ -1224,21 +1212,17 @@ def start_frida_server():
         
         log_to_fsr_logs(f"[DEBUG] Target device: {target_device}")
         
-        # Determine device platform
         platform = get_device_platform(target_device)
         log_to_fsr_logs(f"[DEBUG] Device platform: {platform}")
-        
-        # Handle Android devices
+
         if "device_id" in target_device:
             device_id = target_device["device_id"]
             architecture = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.cpu.abi"])
             
-            # Clean architecture string - take only the first part before dash
             clean_arch = architecture.strip().split('-')[0]
             log_to_fsr_logs(f"[DEBUG] Device architecture: {architecture}")
             log_to_fsr_logs(f"[DEBUG] Cleaned architecture: {clean_arch}")
             
-            # Check if Frida server already exists on device
             log_to_fsr_logs(f"[DEBUG] Checking for existing Frida server on device...")
             existing_frida = frida_server_installed(device_id)
             
@@ -1251,7 +1235,6 @@ def start_frida_server():
                 frida_server_name = "frida-server"
                 should_download = True
                 
-                # Check if we have local file and force download is not enabled
                 frida_server_path = os.path.join(f"./frida-server/android", "frida-server")
                 if os.path.isfile(frida_server_path) and not force_download:
                     try:
@@ -1263,7 +1246,7 @@ def start_frida_server():
                                 latest_version = version_match.group(1)
                                 import time
                                 file_age = time.time() - os.path.getmtime(frida_server_path)
-                                if file_age < 86400:  # 24 hours in seconds
+                                if file_age < 86400:  
                                     should_download = False
                                     log_to_fsr_logs(f"[DEBUG] Using existing local Frida server (less than 24h old)")
                     except Exception as e:
@@ -1288,7 +1271,6 @@ def start_frida_server():
                 if os.path.exists(download_path):
                     os.remove(download_path)
                 
-                # Push to device with retry mechanism
                 log_to_fsr_logs(f"[DEBUG] Pushing Frida server to device...")
                 run_adb_command(["adb", "-s", device_id, "root"])
                 
@@ -1305,9 +1287,7 @@ def start_frida_server():
             log_to_fsr_logs(f"[DEBUG] Checking if Frida server is running...")
             server_running = is_frida_server_running(device_id)
             
-            # If server is running but as shell user, we should restart it as root
             if server_running:
-                # Check if it's running as shell (not ideal)
                 try:
                     ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
                     if ps_result:
@@ -1322,7 +1302,6 @@ def start_frida_server():
                                         user = user_result.strip()
                                         if user == "shell":
                                             log_to_fsr_logs(f"[DEBUG] Server running as shell, restarting as root...")
-                                            # Stop the shell server first
                                             run_adb_command(["adb", "-s", device_id, "shell", "kill", pid])
                                             time.sleep(2)
                                             server_running = False
@@ -1334,24 +1313,20 @@ def start_frida_server():
                 log_to_fsr_logs(f"[DEBUG] Starting Frida server in root shell...")
                 run_adb_command(["adb", "-s", device_id, "root"])
                 
-                # Method 1: Try with su command to ensure root execution
                 try:
                     log_to_fsr_logs(f"[DEBUG] Method 1: Starting with su command...")
                     subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", f"/data/local/tmp/{frida_server_name} &"], 
                                  timeout=10, capture_output=True)
                     log_to_fsr_logs(f"[DEBUG] su command executed")
                     
-                    # Wait a moment for server to start
                     import time
                     time.sleep(3)
                     
-                    # Check if server is now running as root
                     if is_frida_server_running(device_id):
                         log_to_fsr_logs(f"[DEBUG] [OK] Frida server started successfully as root")
                     else:
                         log_to_fsr_logs(f"[DEBUG] su method failed, trying alternative...")
                         
-                        # Method 2: Try with direct root shell
                         try:
                             log_to_fsr_logs(f"[DEBUG] Method 2: Starting with direct root shell...")
                             subprocess.run(["adb", "-s", device_id, "shell", "su", "root", f"/data/local/tmp/{frida_server_name} &"], 
@@ -1364,7 +1339,6 @@ def start_frida_server():
                             else:
                                 log_to_fsr_logs(f"[DEBUG] su root method failed, trying basic method...")
                                 
-                                # Method 3: Basic method (fallback)
                                 subprocess.run(["adb", "-s", device_id, "shell", f"/data/local/tmp/{frida_server_name} &"], 
                                              timeout=10, capture_output=True)
                                 log_to_fsr_logs(f"[DEBUG] Basic method executed")
@@ -1395,7 +1369,6 @@ def start_frida_server():
                 "platform": "android"
             })
         
-        # Handle iOS devices (no server needed)
         else:
             log_to_fsr_logs(f"[DEBUG] iOS device detected - no Frida server installation needed")
             return jsonify({
@@ -1420,42 +1393,35 @@ def stop_frida_server():
         
         log_to_fsr_logs(f"[DEBUG] Stopping Frida server for device: {device_id}")
         
-        # For Android devices, kill the Frida server process more aggressively
         try:
-            # Method 1: Try pkill first
             run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
             log_to_fsr_logs(f"[DEBUG] pkill command executed")
             
-            # Wait a moment
             import time
             time.sleep(2)
             
-            # Method 2: If still running, try killall
             if is_frida_server_running(device_id):
                 log_to_fsr_logs(f"[DEBUG] Server still running, trying killall")
                 run_adb_command(["adb", "-s", device_id, "shell", "killall", "frida-server"])
                 time.sleep(1)
             
-            # Method 3: If still running, try to find and kill frida-server by specific PID in root shell
             if is_frida_server_running(device_id):
                 log_to_fsr_logs(f"[DEBUG] Frida server still running, trying PID-based kill in root shell")
                 ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"])
                 if ps_result:
                     lines = ps_result.strip().split('\n')
                     for line in lines:
-                        if 'frida-server' in line and 'frida-server' in line.split()[-1]:  # Make sure it's actually frida-server
+                        if 'frida-server' in line and 'frida-server' in line.split()[-1]:  
                             parts = line.split()
                             if len(parts) >= 2:
                                 pid = parts[1]
                                 if pid.isdigit():
                                     log_to_fsr_logs(f"[DEBUG] Found frida-server PID: {pid}, killing in root shell")
-                                    # Kill specific frida-server PID in root shell
                                     run_adb_command(["adb", "-s", device_id, "root"])
                                     run_adb_command(["adb", "-s", device_id, "shell", "su", "-c", f"kill -9 {pid}"])
                                     log_to_fsr_logs(f"[DEBUG] Sent kill -9 {pid} to frida-server in root shell")
                                     break
             
-            # Final check
             if is_frida_server_running(device_id):
                 log_to_fsr_logs(f"[WARNING] Frida server may still be running")
                 return jsonify({
@@ -1491,24 +1457,19 @@ def restart_frida_server():
         
         log_to_fsr_logs(f"[DEBUG] Restarting Frida server with force download for device: {device_id}")
         
-        # First stop the server more aggressively
         try:
-            # Kill all frida processes
             run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
             run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida"])
             log_to_fsr_logs(f"[DEBUG] Stopped existing Frida server processes")
         except:
             pass
         
-        # Wait a moment for processes to fully stop
         import time
         time.sleep(3)
         
-        # Verify server is stopped and kill any non-root instances
         if is_frida_server_running(device_id):
             log_to_fsr_logs(f"[WARNING] Frida server still running, checking user...")
             try:
-                # Get all frida-server processes and their users
                 ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A", "|", "grep", "frida-server"])
                 if ps_result:
                     lines = ps_result.strip().split('\n')
@@ -1535,10 +1496,8 @@ def restart_frida_server():
                 except:
                     pass
         
-        # Clean all Frida server files from device
-        clean_frida_server_files(device_id)
+            clean_frida_server_files(device_id)
         
-        # Start with force download
         return start_frida_server_with_force_download(device_id)
         
     except Exception as e:
@@ -1552,7 +1511,6 @@ def start_frida_server_with_force_download(device_id):
         if not adb_check["is_true"]:
             return jsonify({"error": "No devices connected"}), 400
         
-        # Find the device
         target_device = None
         for device in adb_check["available_devices"]:
             if device.get("device_id") == device_id:
@@ -1562,13 +1520,11 @@ def start_frida_server_with_force_download(device_id):
         if not target_device:
             return jsonify({"error": "Device not found"}), 400
         
-        # Handle Android devices with force download
         if "device_id" in target_device:
             device_id = target_device["device_id"]
             architecture = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.cpu.abi"])
             clean_arch = architecture.strip().split('-')[0]
             
-            # Get client version to match server version
             client_version, _ = check_frida_versions()
             if client_version == "Unknown":
                 log_to_fsr_logs(f"[WARNING] Could not determine client version, using latest")
@@ -1579,7 +1535,6 @@ def start_frida_server_with_force_download(device_id):
             
             log_to_fsr_logs(f"[DEBUG] Force downloading Frida server for architecture: {clean_arch}")
             
-            # Force download new server with matching version
             os.makedirs(f"./frida-server/android", exist_ok=True)
             frida_url = get_frida_server_url(clean_arch, target_version)
             
@@ -1598,7 +1553,6 @@ def start_frida_server_with_force_download(device_id):
             if os.path.exists(download_path):
                 os.remove(download_path)
             
-            # Push to device with clean filename and retry mechanism
             log_to_fsr_logs(f"[DEBUG] Pushing new Frida server to device...")
             run_adb_command(["adb", "-s", device_id, "root"])
             
@@ -1610,37 +1564,30 @@ def start_frida_server_with_force_download(device_id):
                 log_to_fsr_logs(f"[ERROR] Failed to push new Frida server: {e}")
                 return jsonify({"error": f"Failed to push Frida server to device: {str(e)}"}), 500
             
-            # Start server in proper root shell
             log_to_fsr_logs(f"[DEBUG] Starting new Frida server in root shell...")
             run_adb_command(["adb", "-s", device_id, "root"])
             
-            # Use su to ensure root execution
             try:
-                # Method 1: Try with su command
                 subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", "/data/local/tmp/frida-server &"], 
                              timeout=10, capture_output=True)
                 log_to_fsr_logs(f"[DEBUG] Started Frida server with su command")
             except subprocess.TimeoutExpired:
                 log_to_fsr_logs(f"[DEBUG] su command timed out, trying alternative method")
                 try:
-                    # Method 2: Try with direct root shell
                     subprocess.run(["adb", "-s", device_id, "shell", "su", "root", "/data/local/tmp/frida-server &"], 
                                  timeout=10, capture_output=True)
                     log_to_fsr_logs(f"[DEBUG] Started Frida server with su root command")
                 except subprocess.TimeoutExpired:
                     log_to_fsr_logs(f"[DEBUG] Alternative method timed out, trying basic method")
-                    # Method 3: Basic method (fallback)
                     subprocess.run(["adb", "-s", device_id, "shell", "/data/local/tmp/frida-server &"], 
                                  timeout=10, capture_output=True)
                     log_to_fsr_logs(f"[DEBUG] Started Frida server with basic method")
             
             time.sleep(3)
             
-            # Verify the server is running and check version
             if is_frida_server_running(device_id):
                 log_to_fsr_logs(f"[DEBUG] Frida server started successfully")
                 
-                # Try to get server version
                 try:
                     server_result = subprocess.run(['frida-ps', '-U'], capture_output=True, text=True, timeout=600)
                     if server_result.returncode == 0:
@@ -1715,7 +1662,6 @@ def main():
         
         if not check_port(port):
             print(Fore.YELLOW + f"Port {port} is already in use!" + Fore.RESET)
-            # Automatically find an available port
             available_port = find_available_port(port if port != 5000 else 5001)
             if available_port:
                 print(Fore.GREEN + f"Automatically using available port {available_port}" + Fore.RESET)
@@ -1900,7 +1846,6 @@ def clean_codex_output(output):
 
     allowed_markers = ("Java.perform", "setImmediate(", "setTimeout(", "void function", "(function", "Interceptor.attach", "Module.", "rpc.exports")
 
-    # Find earliest occurrence of a known JavaScript marker and trim to that point
     start_index = None
     for marker in allowed_markers:
         idx = result.find(marker)
@@ -1947,7 +1892,6 @@ def attempt_script_autofix(script_path, error_messages, output_log):
     try:
         log_to_fsr_logs("[AUTO-FIX] Attempting to fix script using AI via Codex bridge...")
 
-        # Read the original failing script from temp_generated.js
         temp_script_path = "temp_generated.js"
         original_script = ""
 
@@ -1956,16 +1900,13 @@ def attempt_script_autofix(script_path, error_messages, output_log):
                 original_script = f.read()
             log_to_fsr_logs(f"[AUTO-FIX] Reading from temp_generated.js ({len(original_script)} chars)")
         else:
-            # Fallback to the script_path if temp file doesn't exist
             with open(script_path, 'r') as f:
                 original_script = f.read()
             log_to_fsr_logs(f"[AUTO-FIX] Fallback reading from {script_path}")
 
-        # Extract recent Frida logs for context
         error_summary = "\n".join(error_messages) if error_messages else "No specific errors detected"
         output_summary = "\n".join(output_log) if output_log else "No additional output"
 
-        # Create minimal fix prompt - CLAUDE.md contains all the fix requirements
         fix_prompt = f"""Fix the Frida script errors in temp_generated.js based on these error logs:
 
 Error Messages: {error_summary}
@@ -1975,7 +1916,6 @@ Recent Output: {output_summary}
 Please read the current script from temp_generated.js, fix the errors, and update the file with the corrected version."""
 
         try:
-            # Call Codex Bridge to fix the script
             response = call_codex_via_bridge(fix_prompt)
 
             if response and response.get('success'):
@@ -2019,15 +1959,13 @@ def get_ghidra_analysis_context():
         base_url = get_ghidra_server_url()
         context_parts = []
         
-        # Get strings to find library name
         try:
             strings_url = urljoin(base_url, "list_strings")
-            params = {"limit": 100}  # Get more strings to find library name
+            params = {"limit": 100}  
             response = requests.get(strings_url, params=params, timeout=10)
             if response.ok:
                 strings_data = response.text.strip().split('\n')
                 
-                # Look for .so library names in strings
                 library_names = []
                 jni_functions = []
                 interesting_strings = []
@@ -2035,21 +1973,18 @@ def get_ghidra_analysis_context():
                 for string_line in strings_data:
                     if string_line.strip():
                         if '.so' in string_line and 'lib' in string_line:
-                            # Extract library name
                             parts = string_line.split(': ')
                             if len(parts) > 1:
                                 lib_name = parts[1].strip('"')
                                 if lib_name.endswith('.so') and lib_name not in library_names:
                                     library_names.append(lib_name)
                         elif 'Java_' in string_line:
-                            # Extract JNI function names
                             parts = string_line.split(': ')
                             if len(parts) > 1:
                                 jni_func = parts[1].strip('"')
                                 if jni_func not in jni_functions:
                                     jni_functions.append(jni_func)
                         elif any(keyword in string_line.lower() for keyword in ['password', 'key', 'secret', 'token', 'flag']):
-                            # Interesting strings that might be useful for hooking
                             parts = string_line.split(': ')
                             if len(parts) > 1:
                                 interesting_strings.append(parts[1].strip('"'))
@@ -2068,16 +2003,14 @@ def get_ghidra_analysis_context():
         except Exception as e:
             log_to_fsr_logs(f"[WARNING] Error getting strings: {str(e)}")
         
-        # Get function list to find native functions
         try:
             functions_url = urljoin(base_url, "list_functions")
             response = requests.get(functions_url, timeout=10)
             if response.ok:
                 functions = response.text.strip().split('\n')
                 if functions and functions[0]:
-                    # Filter for interesting functions (avoid system functions)
                     native_functions = []
-                    for func in functions[:20]:  # Limit to first 20
+                    for func in functions[:20]:  
                         if func.strip() and not any(sys_func in func.lower() for sys_func in ['__', '_init', '_fini', 'frame_dummy']):
                             native_functions.append(func.strip())
                     
@@ -2087,7 +2020,6 @@ def get_ghidra_analysis_context():
         except Exception as e:
             log_to_fsr_logs(f"[WARNING] Error getting functions: {str(e)}")
         
-        # Get current selection if available
         try:
             current_func_url = urljoin(base_url, "get_current_function")
             response = requests.get(current_func_url, timeout=5)
@@ -2096,12 +2028,10 @@ def get_ghidra_analysis_context():
                 if current_func and "Error" not in current_func and current_func != "No function selected":
                     context_parts.append(f"Currently Selected Function:\n{current_func}")
                     
-                    # Get current address and try decompilation
                     addr_response = requests.get(urljoin(base_url, "get_current_address"), timeout=5)
                     if addr_response.ok:
                         current_addr = addr_response.text.strip()
                         if current_addr and "Error" not in current_addr:
-                            # Get decompiled code
                             decompile_url = urljoin(base_url, "decompile_function")
                             decompile_response = requests.get(decompile_url, 
                                                             params={"address": current_addr}, 
@@ -2109,13 +2039,11 @@ def get_ghidra_analysis_context():
                             if decompile_response.ok:
                                 decompiled = decompile_response.text.strip()
                                 if decompiled and "Error" not in decompiled:
-                                    # Limit decompiled code to reasonable size
                                     context_parts.append(f"Decompiled Code at {current_addr}:\n```c\n{decompiled[:800]}{'...(truncated)' if len(decompiled) > 800 else ''}\n```")
                                     log_to_fsr_logs("[DEBUG] Retrieved decompiled code from current selection")
         except Exception as e:
             log_to_fsr_logs(f"[WARNING] Error getting current function: {str(e)}")
         
-        # Get imports for hooking opportunities
         try:
             imports_url = urljoin(base_url, "list_imports")
             response = requests.get(imports_url, timeout=5)
@@ -2234,7 +2162,6 @@ def generate_root_bypass_script_template():
 
 def generate_activity_hook_script_template(prompt):
     """Generate Activity lifecycle hook script"""
-    # Extract class name from prompt if possible
     class_name = "MainActivity"
     if "." in prompt:
         words = prompt.split()
@@ -2278,7 +2205,6 @@ def generate_activity_hook_script_template(prompt):
 
 def generate_native_hook_script_template(prompt):
     """Generate native function hook script"""
-    # Extract function and library names from prompt
     func_name = "strcmp"
     lib_name = "libc.so"
     
@@ -2316,7 +2242,6 @@ def generate_native_hook_script_template(prompt):
                     console.log("[+] {func_name} returned: " + retval);
                     console.log("[+] Comparing: '" + this.arg0 + "' vs '" + this.arg1 + "'");
                     
-                    // Uncomment to always return 0 (strings equal)
                     // retval.replace(0);
                 }}
             }});
@@ -2359,6 +2284,79 @@ def generate_generic_hook_script_template(prompt):
     console.log("[+] Generic hook script loaded - customize as needed");
 }});"""
 
-# MAIN ENTRY POINT
+@app.route('/sslpindec', methods=['GET'])
+def sslpindetect_page():
+    """Render SSL Pinning Detection page"""
+    return render_template('sslpindetect.html')
+
+@app.route('/sslpindec/analyze', methods=['POST'])
+def sslpindetect_analyze():
+    """Analyze APK for SSL pinning"""
+    try:
+        from sslpindetect import SSLPinDetector
+        
+        if 'apkFile' not in request.files:
+            return jsonify({'success': False, 'error': 'No APK file uploaded'}), 400
+        
+        file = request.files['apkFile']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        if not file.filename.endswith('.apk'):
+            return jsonify({'success': False, 'error': 'Only APK files are allowed'}), 400
+        
+        # Get apktool path from form or use default
+        apktool_path = request.form.get('apktool_path', '').strip()
+        if not apktool_path:
+            # Try to find apktool using the detector's method
+            from sslpindetect import SSLPinDetector
+            detector_temp = SSLPinDetector()
+            apktool_path = detector_temp._find_apktool()
+        
+        if not apktool_path or not os.path.exists(apktool_path):
+            return jsonify({
+                'success': False, 
+                'error': 'Apktool not found. Please specify the path to apktool (supports .jar, .exe, or binary).\n\nCommon locations:\n- apktool.jar (requires Java)\n- apktool.exe (Windows)\n- apktool (Linux/Mac binary)\n\nYou can download apktool from: https://ibotpeaches.github.io/Apktool/'
+            }), 400
+        
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        apk_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(apk_path)
+        
+        try:
+            # Initialize detector
+            detector = SSLPinDetector(apktool_path=apktool_path)
+            
+            # Detect SSL pinning
+            verbose = request.form.get('verbose', 'false').lower() == 'true'
+            result = detector.detect_ssl_pinning(apk_path, verbose=verbose)
+            
+            # Clean up uploaded file
+            if os.path.exists(apk_path):
+                os.remove(apk_path)
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            # Clean up uploaded file on error
+            if os.path.exists(apk_path):
+                os.remove(apk_path)
+            return jsonify({
+                'success': False,
+                'error': f'Analysis failed: {str(e)}'
+            }), 500
+            
+    except ImportError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Module import error: {str(e)}'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Unexpected error: {str(e)}'
+        }), 500
+
 if __name__ == "__main__":
     main()

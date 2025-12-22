@@ -1,0 +1,64 @@
+{
+    "OkHttp Certificate Pinning": [
+        "Lcom/squareup/okhttp/CertificatePinner;",
+        "Lokhttp3/CertificatePinner;",
+        "setCertificatePinner",
+        "CertificatePinner.check"
+    ],
+    "TrustManager Override": [
+        "Ljavax/net/ssl/X509TrustManager;",
+        "checkServerTrusted",
+        "checkClientTrusted",
+        "getAcceptedIssuers"
+    ],
+    "HostnameVerifier Override": [
+        "Ljavax/net/ssl/HostnameVerifier;",
+        "verify",
+        "setHostnameVerifier"
+    ],
+    "SSLSocketFactory Override": [
+        "Ljavax/net/ssl/SSLSocketFactory;",
+        "createSocket",
+        "setSSLSocketFactory"
+    ],
+    "TrustKit": [
+        "Lcom/datatheorem/trustkit/TrustKit;",
+        "TrustKit.getInstance",
+        "pinningValidator"
+    ],
+    "Network Security Config": [
+        "network_security_config",
+        "pin-set",
+        "base-config"
+    ],
+    "Certificate Chain Validation": [
+        "checkServerTrusted",
+        "verifyCertificateChain",
+        "validateCertificateChain"
+    ],
+    "Custom Trust Store": [
+        "KeyStore.getInstance",
+        "load.*InputStream",
+        "TrustManagerFactory"
+    ],
+    "OkHttp3 Pinning": [
+        "okhttp3.CertificatePinner",
+        "CertificatePinner.Builder",
+        "add.*sha256"
+    ],
+    "Conscrypt": [
+        "Lorg/conscrypt/ConscryptHostnameVerifier;",
+        "Lorg/conscrypt/TrustManagerImpl;"
+    ],
+    "Android Network Security": [
+        "networkSecurityConfig",
+        "pinDigests",
+        "trustAnchors"
+    ],
+    "Custom SSL Context": [
+        "SSLContext.getInstance",
+        "init.*TrustManager",
+        "setDefault.*SSLContext"
+    ]
+}
+

@@ -1,35 +1,202 @@
 {% extends "base.html" %}
 
 {% block title %}
-    <title>Frida Script Runner | Lost's USB</title>
+    <title>Frida Script Runner | Dashboard</title>
 {% endblock %}
 
 {% block body %}
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/no-usb.css') }}" class="rel">
-    <section>
-        <h3 class="itemTitle">No USB or Connected Device Found !</h3>
-        <br><br>
-        <div id="reading-key">
-            <div id="key">
-                <span></span>
-                <span></span>
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" alt="FSR Logo" class="dashboard-logo">
+            <h1 class="dashboard-title">Frida Script Runner</h1>
+            <p class="dashboard-subtitle">Choose a feature to get started</p>
+        </div>
+        
+        <div class="usb-status-container" id="usbStatusContainer">
+            <div class="usb-status-header">
+                <i class="bi bi-usb-symbol"></i>
+                <span class="usb-status-title">USB Device Monitor</span>
+                <span class="usb-status-indicator" id="statusIndicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Scanning...</span>
+                </span>
             </div>
-            <div id="reading-animation">
-                <span></span>
+            <div class="usb-status-content" id="usbStatusContent">
+                <div class="status-loading">
+                    <div class="spinner"></div>
+                    <p>Checking for connected devices...</p>
+                </div>
             </div>
         </div>
-        <br><br>
-        <p class="itemDescription">
-            Please make sure that USB is installed correctly, 
-            <br>
-            Connect your device Android or iOS, run the Frida server, and then reload this page.
-            <br>
-            <b>
-            <br>
-                If you use emulator please run the Frida server, and then reload this page.
-            </b>
-        </p>
-    </section>
+        
+        <div class="dashboard-cards">
+            <div class="dashboard-card" onclick="window.location.href='/'">
+                <div class="card-icon">
+                    <i class="bi bi-terminal"></i>
+                </div>
+                <h3 class="card-title">Frida Script Runner</h3>
+                <p class="card-description">Run and manage Frida scripts on connected devices</p>
+            </div>
+            <div class="dashboard-card" onclick="window.location.href='/sslpindec'">
+                <div class="card-icon">
+                    <i class="bi bi-phone"></i>
+                </div>
+                <h3 class="card-title">SSL Pinning Detector</h3>
+                <p class="card-description">Detect SSL Pinning on your application</p>
+            </div>
+            <div class="dashboard-card" onclick="window.location.href='/features'">
+                <div class="card-icon">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                </div>
+                <h3 class="card-title">APK & IPA Dump</h3>
+                <p class="card-description">Dump APK & IPA from device</p>
+            </div>
+            
+            <div class="dashboard-card" onclick="window.location.href='#apk-analyzer'">
+                <div class="card-icon">
+                    <i class="bi bi-file-earmark-binary"></i>
+                </div>
+                <h3 class="card-title">APK & IPA Analyzer</h3>
+                <p class="card-description">Analyze APK & IPA files and extract information</p>
+            </div>
+            
+            <div class="dashboard-card" onclick="window.location.href='#apk-downloader'">
+                <div class="card-icon">
+                    <i class="bi bi-download"></i>
+                </div>
+                <h3 class="card-title">APK & IPA Downloader</h3>
+                <p class="card-description">Download APK & IPA files from connected devices</p>
+            </div>
 
+            <div class="dashboard-card" onclick="window.location.href='#mobile-proxy'">
+                <div class="card-icon">
+                    <i class="bi bi-globe2"></i>
+                </div>
+                <h3 class="card-title">Mobile Proxy</h3>
+                <p class="card-description">Configure and manage Proxy settings</p>
+            </div>
+            
+            <div class="dashboard-card" onclick="window.location.href='#adb-setting'">
+                <div class="card-icon">
+                    <i class="bi bi-gear"></i>
+                </div>
+                <h3 class="card-title">ADB Setting</h3>
+                <p class="card-description">Configure and manage ADB settings</p>
+            </div>
 
+            <div class="dashboard-card" onclick="window.location.href='#terminal'">
+                <div class="card-icon">
+                    <i class="bi bi-terminal-fill"></i>
+                </div>
+                <h3 class="card-title">Terminal</h3>
+                <p class="card-description">Run and manage Frida scripts on connected devices</p>
+            </div>
+            
+            <div class="dashboard-card" onclick="window.location.href='#settings'">
+                <div class="card-icon">
+                    <i class="bi bi-sliders"></i>
+                </div>
+                <h3 class="card-title">Settings</h3>
+                <p class="card-description">Application settings and preferences</p>
+            </div>
+        </div>
+        
+        <div class="dashboard-footer">
+            <a class="credit" href="https://secrash.com" target="_blank"><span>2025 © Secrash</span></a>
+        </div>
+    </div>
+    
+    <script>
+        let deviceCheckInterval;
+        let lastDeviceCount = 0;
+        
+        function checkDeviceStatus() {
+            fetch('/check-device-status')
+                .then(response => response.json())
+                .then(data => {
+                    updateDeviceStatus(data);
+                })
+                .catch(error => {
+                    console.error('Error checking device status:', error);
+                    updateDeviceStatus({
+                        connected: false,
+                        device_count: 0,
+                        devices: [],
+                        message: 'Error checking device status'
+                    });
+                });
+        }
+        
+        function updateDeviceStatus(data) {
+            const statusContainer = document.getElementById('usbStatusContainer');
+            const statusContent = document.getElementById('usbStatusContent');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (data.connected && data.device_count > 0) {
+                statusDot.className = 'status-dot status-connected';
+                statusText.textContent = `${data.device_count} Device(s) Connected`;
+                
+                let devicesHtml = '<div class="devices-list">';
+                data.devices.forEach((device, index) => {
+                    devicesHtml += `
+                        <div class="device-item">
+                            <div class="device-icon">
+                                <i class="bi ${device.type === 'Android' ? 'bi-android' : 'bi-apple'}"></i>
+                            </div>
+                            <div class="device-info">
+                                <div class="device-name">${device.model || 'Unknown Device'}</div>
+                                <div class="device-details">
+                                    <span class="device-type">${device.type}</span>
+                                    ${device.android_version ? `<span class="device-version">Android ${device.android_version}</span>` : ''}
+                                    ${device.serial_number ? `<span class="device-serial">SN: ${device.serial_number}</span>` : ''}
+                                </div>
+                            </div>
+                            <div class="device-status-badge connected">
+                                <i class="bi bi-check-circle"></i> Connected
+                            </div>
+                        </div>
+                    `;
+                });
+                devicesHtml += '</div>';
+                
+                statusContent.innerHTML = devicesHtml;
+                
+                if (data.device_count > lastDeviceCount && lastDeviceCount === 0) {
+                    setTimeout(() => {
+                        if (confirm('Device detected! Would you like to go to Frida Script Runner?')) {
+                            window.location.href = '/';
+                        }
+                    }, 2000);
+                }
+                
+                lastDeviceCount = data.device_count;
+            } else {
+                statusDot.className = 'status-dot status-disconnected';
+                statusText.textContent = 'No Device Connected';
+                
+                statusContent.innerHTML = `
+                    <div class="no-device-message">
+                        <i class="bi bi-usb-drive"></i>
+                        <p>Please connect your Android or iOS device via USB</p>
+                        <p class="help-text">Make sure USB debugging is enabled and device is properly connected</p>
+                    </div>
+                `;
+                
+                lastDeviceCount = 0;
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            checkDeviceStatus(); 
+            deviceCheckInterval = setInterval(checkDeviceStatus, 3000);
+        });
+        
+        window.addEventListener('beforeunload', function() {
+            if (deviceCheckInterval) {
+                clearInterval(deviceCheckInterval);
+            }
+        });
+    </script>
 {% endblock %}
