@@ -147,7 +147,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .dashboard-header {
@@ -178,14 +178,43 @@
   font-weight: 300;
 }
 
+.dashboard-cards-scroll {
+  max-width: 1200px;
+  width: 100%;
+  max-height: 420px;
+  padding: 10px 20px 0 20px;
+  margin-bottom: 30px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-cards-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dashboard-cards-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-cards-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+}
+
+.dashboard-cards-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
 .dashboard-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 25px;
-  max-width: 1200px;
   width: 100%;
-  padding: 0 20px;
-  margin-bottom: 40px;
+  margin-bottom: 10px;
 }
 
 .dashboard-card {
@@ -513,10 +542,15 @@
     font-size: 1rem;
   }
 
+  .dashboard-cards-scroll {
+    max-height: none;
+    padding: 10px 10px 0 10px;
+    margin-bottom: 20px;
+  }
+
   .dashboard-cards {
     grid-template-columns: 1fr;
     gap: 20px;
-    padding: 0 10px;
   }
 
   .dashboard-card {

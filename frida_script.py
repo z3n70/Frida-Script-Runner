@@ -19,6 +19,13 @@ import lzma
 import wget
 import subprocess
 
+from mobile_proxy import (
+    get_current_mobile_proxy,
+    set_mobile_proxy,
+    unset_mobile_proxy,
+    get_local_proxy_ips,
+)
+
 sys.tracebacklimit = 0
 
 parser = argparse.ArgumentParser(description='FSR Tool')
@@ -712,6 +719,64 @@ def features():
         identifiers = [idf for idf in identifiers if search_query in idf.lower()]
 
     return render_template('features.html',packages=packages,identifiers=identifiers,message=message,devices=device_info['available_devices'])
+
+#mobile fucking proxyyyyyyyyyyyyyyyyy
+@app.route('/mobile-proxy', methods=['GET'])
+def mobile_proxy_page():
+    """
+    Render Mobile Proxy page for managing Android global HTTP proxy.
+    """
+    current_proxy = get_current_mobile_proxy()
+    return render_template('mobile-proxy.html', current_proxy=current_proxy)
+
+
+@app.route('/mobile-proxy/set', methods=['POST'])
+def mobile_proxy_set():
+    """
+    Set Android global HTTP proxy using provided IP and port.
+    """
+    data = request.get_json(silent=True) or request.form
+    ip = (data.get('ip') or '').strip()
+    port = (str(data.get('port') or '')).strip()
+
+    if not ip or not port:
+        return jsonify({'success': False, 'error': 'IP and Port are required'}), 400
+
+    try:
+        port_int = int(port)
+        if port_int < 1 or port_int > 65535:
+            raise ValueError()
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Port must be a number between 1 and 65535'}), 400
+
+    result = set_mobile_proxy(ip, port)
+    if result.get('success'):
+        return jsonify({'success': True,'proxy': result.get('proxy'),'message': f"Proxy set to {result.get('proxy')}",})
+    else:
+        return jsonify({'success': False,'error': result.get('error') or 'Failed to set proxy',
+}), 500
+
+
+@app.route('/mobile-proxy/unset', methods=['POST'])
+def mobile_proxy_unset():
+    """
+    Clear Android global HTTP proxy (sets it to :0).
+    """
+    result = unset_mobile_proxy()
+    if result.get('success'):
+        return jsonify({'success': True,'proxy': result.get('proxy'),'message': "Proxy unset (set to :0)",})
+    else:
+        return jsonify({'success': False,'error': result.get('error') or 'Failed to unset proxy',}), 500
+
+
+@app.route('/mobile-proxy/ips', methods=['GET'])
+def mobile_proxy_ips():
+    """
+    Return list of local IP addresses (from ifconfig/ipconfig) for proxy selection.
+    """
+    result = get_local_proxy_ips()
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
 
 #apk downloader
 @app.route('/apk-download', methods=['POST'])

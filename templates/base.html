@@ -23,8 +23,80 @@
     </head>
     <body>
 
-    {% block body %}
-    {% endblock %}
+    <!-- nav fucking bar-->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                <img src="{{ url_for('static', filename='img/fsr_logo.png') }}" alt="FSR" width="28" height="28" class="me-2">
+                <span>Frida Script Runner</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#fsrNavbar" aria-controls="fsrNavbar" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="fsrNavbar">
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{{ url_for('index') }}">
+                            <i class="bi bi-house-door"></i> Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/features') %}active{% endif %}" href="{{ url_for('features') }}">
+                            <i class="bi bi-grid"></i> Features
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/sslpindec') %}active{% endif %}" href="{{ url_for('sslpindetect_page') }}">
+                            <i class="bi bi-shield-lock"></i> SSL Detector
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/mobile-proxy') %}active{% endif %}" href="{{ url_for('mobile_proxy_page') }}">
+                            <i class="bi bi-globe2"></i> Mobile Proxy
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="comingSoonDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-stars"></i> Coming Soon
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="comingSoonDropdown">
+                            <li class="dropdown-header small text-muted">Planned Features</li>
+                            <li>
+                                <span class="dropdown-item disabled">
+                                    <i class="bi bi-file-earmark-binary"></i> APK &amp; IPA Analyzer
+                                </span>
+                            </li>
+                            <li>
+                                <span class="dropdown-item disabled">
+                                    <i class="bi bi-download"></i> APK &amp; IPA Downloader
+                                </span>
+                            </li>
+                            <li>
+                                <span class="dropdown-item disabled">
+                                    <i class="bi bi-gear"></i> ADB Setting
+                                </span>
+                            </li>
+                            <li>
+                                <span class="dropdown-item disabled">
+                                    <i class="bi bi-terminal-fill"></i> Terminal
+                                </span>
+                            </li>
+                            <li>
+                                <span class="dropdown-item disabled">
+                                    <i class="bi bi-sliders"></i> Settings
+                                </span>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="mt-4">
+        {% block body %}
+        {% endblock %}
+    </div>
 
         <div class="wave"></div>
         <div class="wave"></div>
