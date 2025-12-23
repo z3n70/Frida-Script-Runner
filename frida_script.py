@@ -2370,10 +2370,8 @@ def sslpindetect_analyze():
         if not file.filename.endswith('.apk'):
             return jsonify({'success': False, 'error': 'Only APK files are allowed'}), 400
         
-        # Get apktool path from form or use default
         apktool_path = request.form.get('apktool_path', '').strip()
         if not apktool_path:
-            # Try to find apktool using the detector's method
             from sslpindetect import SSLPinDetector
             detector_temp = SSLPinDetector()
             apktool_path = detector_temp._find_apktool()
@@ -2384,27 +2382,22 @@ def sslpindetect_analyze():
                 'error': 'Apktool not found. Please specify the path to apktool (supports .jar, .exe, or binary).\n\nCommon locations:\n- apktool.jar (requires Java)\n- apktool.exe (Windows)\n- apktool (Linux/Mac binary)\n\nYou can download apktool from: https://ibotpeaches.github.io/Apktool/'
             }), 400
         
-        # Save uploaded file
         filename = secure_filename(file.filename)
         apk_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(apk_path)
         
         try:
-            # Initialize detector
             detector = SSLPinDetector(apktool_path=apktool_path)
             
-            # Detect SSL pinning
             verbose = request.form.get('verbose', 'false').lower() == 'true'
             result = detector.detect_ssl_pinning(apk_path, verbose=verbose)
             
-            # Clean up uploaded file
             if os.path.exists(apk_path):
                 os.remove(apk_path)
             
             return jsonify(result)
             
         except Exception as e:
-            # Clean up uploaded file on error
             if os.path.exists(apk_path):
                 os.remove(apk_path)
             return jsonify({

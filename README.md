@@ -37,8 +37,10 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 - **Docker Support:** Full containerization support with host bridge for Codex CLI access.
 - **Cross-Platform:** Works on Windows, Linux, and macOS with proper dependency management.
 
-## Feature Details
-![Alt text](https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/main/static/image.png)
+## Tech Graph
+<p align="center">
+  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/main/FSR_Tech%20Graph.png" width="450">
+</p>
 
 ### How to Use for Android & Custom Script
 [![Video Thumbnail](https://img.youtube.com/vi/LGx0L_uQQDY/0.jpg)](https://www.youtube.com/watch?v=LGx0L_uQQDY)

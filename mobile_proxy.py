@@ -51,7 +51,6 @@ def get_current_mobile_proxy() -> Dict[str, Any]:
     Read the current global http_proxy from the Android device.
     """
     result = _run_adb_command(["shell", "settings", "get", "global", "http_proxy"])
-    # Normalize value for UI convenience
     value = result["stdout"].strip() if result["success"] else ""
     return {
         "success": result["success"],
@@ -124,14 +123,12 @@ def get_local_proxy_ips() -> Dict[str, Any]:
     ips: List[Dict[str, str]] = []
 
     if is_windows:
-        # Very simple parser for `ipconfig` IPv4 lines
         current_label = None
         for line in output.splitlines():
             line = line.rstrip()
             if not line:
                 continue
             if not line.startswith(" "):
-                # Interface header line
                 current_label = line.strip()
                 continue
             if "IPv4 Address" in line or "IPv4-adres" in line or "IPv4 Address." in line:
@@ -142,28 +139,22 @@ def get_local_proxy_ips() -> Dict[str, Any]:
                         label = current_label or "IPv4"
                         ips.append({"ip": ip, "label": f"{label} ({ip})"})
     else:
-        # Parse `ifconfig` output for inet lines (exclude 127.0.0.1)
-        # macOS/BSD uses tabs for indentation, so we must check generic whitespace,
-        # not only a single space.
         current_if = None
         for raw_line in output.splitlines():
             if not raw_line.strip():
                 continue
             if not raw_line[0].isspace():
-                # Interface name line, e.g. "en0: flags=..."
                 current_if = raw_line.split(":", 1)[0].strip()
                 continue
             line = raw_line.strip()
             if line.startswith("inet "):
                 parts = line.split()
-                # Typical: "inet 192.168.x.x  netmask ..."
                 if len(parts) >= 2:
                     ip = parts[1]
                     if ip and not ip.startswith("127."):
                         iface = current_if or "iface"
                         ips.append({"ip": ip, "label": f"{iface} ({ip})"})
 
-    # Deduplicate by IP keeping first label
     seen = set()
     unique_ips: List[Dict[str, str]] = []
     for item in ips:
