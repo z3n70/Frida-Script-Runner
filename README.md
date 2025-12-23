@@ -39,7 +39,7 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 
 ## Tech Graph
 <p align="center">
-  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/main/FSR_Tech%20Graph.png" width="450">
+  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/main/FSR_Tech%20Graph.png" width="800">
 </p>
 
 ### How to Use for Android & Custom Script
