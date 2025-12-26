@@ -22,4 +22,3 @@ tqdm
 wcwidth
 wget
 requests
-objection

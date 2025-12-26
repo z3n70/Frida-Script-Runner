@@ -20,7 +20,6 @@
         <div class="col-md-4">
           <label class="form-label">Version</label>
           <input type="text" class="form-control" id="gmVersion" placeholder="e.g. 16.7.19" />
-          <small class="text-muted">Enter exact tag (e.g., 16.7.19)</small>
         </div>
         <div class="col-md-3">
           <label class="form-label">Architecture</label>
@@ -31,8 +30,8 @@
             <option>x86</option>
           </select>
         </div>
-        <div class="col-md-3">
-          <button id="gmDownloadBtn" class="btn btn-primary"><i class="bi bi-download"></i> Download</button>
+        <div class="col-md-3 d-flex align-items-end">
+          <button id="gmDownloadBtn" class="btn btn-primary w-100"><i class="bi bi-download"></i> Download</button>
         </div>
       </div>
 
@@ -57,4 +56,3 @@
 
 <script src="{{ url_for('static', filename='js/frida_gadget_manager.js') }}"></script>
 {% endblock %}
-

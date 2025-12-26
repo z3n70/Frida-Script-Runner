@@ -26,6 +26,34 @@ socket.on("fsr_log", function (data) {
   outputContainer.scrollTop = outputContainer.scrollHeight;
 });
 
+// Send input to running Frida process
+function sendFridaInput() {
+  const inputEl = document.getElementById('fridaCommandInput');
+  if (!inputEl) return;
+  const value = inputEl.value.trim();
+  if (value.length === 0) return;
+
+  fetch('/send-frida-input', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ input: value })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (!data.success) {
+      appendContent(`Failed to send to Frida: ${data.error || 'Unknown error'}`);
+    }
+  })
+  .catch(err => {
+    appendContent(`Failed to send to Frida: ${err.message}`);
+  })
+  .finally(() => {
+    inputEl.value = '';
+  });
+}
+
 // Clear FSR logs function
 function clearFSRLogs() {
   var outputContainer = document.getElementById("outputContainer");
@@ -269,11 +297,13 @@ stopButton.addEventListener("click", function (event) {
   stopButton.disabled = true;
   runButton.disabled = false;
   fixButton.style.display = "none";
-  var clearOutput = document.getElementById("clearOutput")
-  clearOutput.innerHTML = ""
-  clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`
-  logOutput.innerHTML =
-    '</br><span class="text-success">~</span><pre class="wraptext" id="output-list"></pre>';
+  // Clear logs without removing input controls
+  var outputFridaEl = document.getElementById("outputFrida");
+  var outputListEl = document.getElementById("output-list");
+  if (outputFridaEl) outputFridaEl.innerHTML = "";
+  if (outputListEl) outputListEl.innerHTML = "";
+  // Clear the inline pre without duplicating IDs
+  logOutput.innerHTML = '';
   fetch("/stop-frida")
     .then((response) => response.text())
     .then((data) => {
@@ -354,8 +384,11 @@ runButton.addEventListener("click", function (event) {
   runButton.disabled = true;
   stopButton.disabled = false;
   fixButton.style.display = "inline-block";
-  var clearOutput = document.getElementById("clearOutput");
-  clearOutput.innerHTML = `<p class="wraptext" id="outputFrida"></p><div id="output-list"></div>`;
+  // Reset logs without removing input controls
+  var outputFridaEl = document.getElementById("outputFrida");
+  var outputListEl = document.getElementById("output-list");
+  if (outputFridaEl) outputFridaEl.innerHTML = "";
+  if (outputListEl) outputListEl.innerHTML = "";
   runFrida();
 });
 
@@ -705,6 +738,25 @@ document.addEventListener("DOMContentLoaded", function () {
   
   // Initial status refresh
   refreshFridaStatus();
+});
+
+// Hook up interactive Frida input controls when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  const sendBtn = document.getElementById('sendFridaInputBtn');
+  const inputEl = document.getElementById('fridaCommandInput');
+  if (sendBtn) {
+    sendBtn.addEventListener('click', function() {
+      sendFridaInput();
+    });
+  }
+  if (inputEl) {
+    inputEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendFridaInput();
+      }
+    });
+  }
 });
 
 // Toggle Auto Generate Script Input

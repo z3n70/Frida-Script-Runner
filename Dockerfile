@@ -33,7 +33,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Ensure objection CLI is available (redundant if in requirements, but explicit for clarity)
-RUN pip install --no-cache-dir objection || true
 
 # Copy application code
 COPY . .

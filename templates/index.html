@@ -39,7 +39,6 @@
                   {% endif %}
                 </div>
                 <div class="col-4 text-end">
-                  <a class="btn btn-outline-info me-2" href="/sslpindec" role="button"><i class="bi bi-shield-lock"></i> SSL Detector</a>
                   <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
                 </div>
               </div>
@@ -207,6 +206,13 @@
                 <label for="script_content" class="form-label">Script Content</label>
                 <textarea class="form-control" name="script_content" id="scriptContent" rows="5" placeholder="Script Content" style="height: 150px;"></textarea>
               </div>
+
+              <!-- Additional Frida CLI Parameters -->
+              <div class="mb-3">
+                <label for="fridaArgs" class="form-label">Additional Frida Parameters</label>
+                <input type="text" class="form-control" id="fridaArgs" name="frida_args" placeholder="e.g. --no-pause --realm=usb">
+                <small class="text-muted">These are appended to the frida command. Example full: frida -U -f &lt;package&gt; -l &lt;script&gt; --no-pause</small>
+              </div>
     
               <div class="d-flex justify-content-between align-items-center">
                 <div class="form-check">
@@ -260,7 +266,7 @@
         </div>
       </div>
       
-      <div class="terminal-fsr" style="height: 400px;">
+      <div class="terminal-fsr" style="height: 400px; display: flex; flex-direction: column;">
         <div class="head-terminal">
           <div class="row g-0 align-items-center">
             <div class="col-auto">
@@ -275,11 +281,19 @@
             </div>
           </div>
         </div>
-        <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
+        <div class="cli" style="flex: 1 1 auto; overflow-y: auto;">
           <div class="cli-content-terminal p-2" id="clearOutput">
             <p class="wraptext mb-0" id="outputFrida"></p>
             <div id="output-list"></div>
           </div>
+        </div>
+        <div class="terminal-footer p-2">
+          <label for="fridaCommandInput" class="form-label small mb-1">Send Command to Frida</label>
+          <div class="input-group input-group-sm mb-1">
+            <input type="text" class="form-control" id="fridaCommandInput" placeholder="Type a Frida REPL command (e.g., %resume)">
+            <button class="btn btn-outline-primary" type="button" id="sendFridaInputBtn">Send</button>
+          </div>
+          <small class="text-muted">Sends text to the running frida process stdin (REPL).</small>
         </div>
       </div>
     </div>

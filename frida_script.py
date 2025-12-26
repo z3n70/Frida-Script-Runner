@@ -42,6 +42,8 @@ frida_output_buffer = []
 current_script_path = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
 GADGET_CACHE_DIR = os.path.join(os.getcwd(), 'frida-gadget', 'android')
+process_input_lock = threading.Lock()
+last_frida_command = None
 
 if os.path.exists("/.dockerenv"):
     CODEX_BRIDGE_URL = "http://host.docker.internal:8091"
@@ -1537,7 +1539,6 @@ def api_gadget_inject():
         script_text = (request.form.get('script_text') or '').strip()
         autoload_raw = (request.form.get('autoload') or '').strip().lower()
         autoload = autoload_raw in ('1', 'true', 'on', 'yes')
-        use_objection = (request.form.get('use_objection') or '').strip().lower() in ('1', 'true', 'on', 'yes')
 
         # Save upload
         filename = secure_filename(file.filename)
@@ -1548,157 +1549,6 @@ def api_gadget_inject():
         except Exception:
             fsize = -1
         log_to_fsr_logs(f"[GADGET] Saved to {upload_path} (size={fsize} bytes)")
-
-        # Objection-based patching path (skips apktool rebuild)
-        if use_objection:
-            obj = shutil.which('objection')
-            if not obj:
-                return jsonify({'success': False, 'error': 'objection not found in PATH. Install with: pip install objection'}), 400
-
-            workdir = tempfile.mkdtemp(prefix='gadget_objection_')
-            @after_this_request
-            def _cleanup_objection(response):
-                try:
-                    if os.path.exists(upload_path):
-                        os.remove(upload_path)
-                except Exception:
-                    pass
-                try:
-                    shutil.rmtree(workdir, ignore_errors=True)
-                except Exception:
-                    pass
-                return response
-
-            # Build command
-            arch_map = {
-                'arm64-v8a': 'android-arm64',
-                'armeabi-v7a': 'android-arm',
-                'x86_64': 'android-x86_64',
-                'x86': 'android-x86'
-            }
-            args = [obj, 'patchapk', '--source', upload_path]
-            if version:
-                args += ['--gadget-version', version]
-            if arch in arch_map:
-                args += ['--gadget-archs', arch_map[arch]]
-
-            log_to_fsr_logs(f"[GADGET][OBJ] Running: {' '.join(args)}")
-            pr = subprocess.run(args, capture_output=True, text=True, timeout=1800)
-            if pr.returncode != 0:
-                # Retry without arch hint in case objection version doesn't support the flag
-                log_to_fsr_logs(f"[GADGET][OBJ] First attempt failed: {pr.stderr or pr.stdout}. Retrying without --gadget-archs")
-                args2 = [obj, 'patchapk', '--source', upload_path]
-                if version:
-                    args2 += ['--gadget-version', version]
-                pr2 = subprocess.run(args2, capture_output=True, text=True, timeout=1800)
-                if pr2.returncode != 0:
-                    return jsonify({'success': False, 'error': f'objection patchapk failed: {(pr2.stderr or pr2.stdout)[:8000]}'}), 500
-                output_text = (pr2.stdout or '') + ("\n" + pr2.stderr if pr2.stderr else '')
-            else:
-                output_text = (pr.stdout or '') + ("\n" + pr.stderr if pr.stderr else '')
-
-            # Try to find output APK path from objection output
-            patched_apk = None
-            try:
-                import re
-                m = re.search(r'Writing new APK file:\s*(.*\.apk)', output_text)
-                if m:
-                    candidate = m.group(1).strip()
-                    if os.path.exists(candidate):
-                        patched_apk = candidate
-            except Exception:
-                pass
-            if not patched_apk:
-                # Fallback: look for *.objection.apk next to upload
-                folder = os.path.dirname(upload_path)
-                for name in os.listdir(folder):
-                    if name.endswith('.apk') and (name.endswith('.objection.apk') or 'objection' in name.lower()):
-                        p = os.path.join(folder, name)
-                        patched_apk = p
-                        break
-            if not patched_apk or not os.path.exists(patched_apk):
-                return jsonify({'success': False, 'error': 'objection did not produce a patched APK. Check logs.'}), 500
-
-            log_to_fsr_logs(f"[GADGET][OBJ] Patched APK: {patched_apk}")
-
-            # Optionally embed our script + config into APK
-            lib_dir_name = arch  # e.g., arm64-v8a
-            # Prepare wrapped script content if provided
-            script_choice_content = None
-            if 'script_file' in request.files and request.files['script_file'] and request.files['script_file'].filename:
-                sf = request.files['script_file']
-                script_choice_content = sf.read().decode('utf-8', errors='ignore')
-            elif script_text:
-                script_choice_content = script_text
-            elif script_choice:
-                try:
-                    repo_script_path = os.path.join('scripts', script_choice)
-                    with open(repo_script_path, 'r', encoding='utf-8', errors='ignore') as rf:
-                        script_choice_content = rf.read()
-                except Exception:
-                    script_choice_content = None
-
-            wrapped_source = None
-            if script_choice_content:
-                try:
-                    wrapped_source = (
-                        "(function(){\n"
-                        "  var __src = " + json.dumps(script_choice_content) + ";\n"
-                        "  try {\n"
-                        "    Java.perform(function() {\n"
-                        "      try {\n"
-                        "        eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js');\n"
-                        "        try {\n"
-                        "          var Log = Java.use('android.util.Log');\n"
-                        "          var At = Java.use('android.app.ActivityThread');\n"
-                        "          var pkg = '';\n"
-                        "          try { pkg = At.currentPackageName(); } catch(e) {}\n"
-                        "          Log.i('FSR', 'Gadget script loaded' + (pkg ? ' pkg=' + pkg : ''));\n"
-                        "        } catch (e) {}\n"
-                        "      } catch (e) {\n"
-                        "        try {\n"
-                        "          var Log = Java.use('android.util.Log');\n"
-                        "          Log.e('FSR', 'Script error: ' + e);\n"
-                        "          Log.e('FSR', String(e.stack || e));\n"
-                        "        } catch (ie) {}\n"
-                        "        console.log('[FSR] Script error: ' + e + '\\n' + (e.stack||''));\n"
-                        "      }\n"
-                        "    });\n"
-                        "  } catch (e) {\n"
-                        "    try { eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js'); } catch (ee) {}\n"
-                        "  }\n"
-                        "})();\n"
-                    )
-                except Exception:
-                    wrapped_source = script_choice_content
-
-            # Update APK contents
-            import zipfile
-            new_apk_path = os.path.join(workdir, 'objection-updated.apk')
-            import zipfile
-            with zipfile.ZipFile(patched_apk, 'r') as zin, zipfile.ZipFile(new_apk_path, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
-                for item in zin.infolist():
-                    name = item.filename
-                    # Drop any existing gadget config or our script to avoid duplicates
-                    if name.endswith('/libfrida-gadget.config.so') or name.endswith('/libfsr-gadget-script.js.so'):
-                        continue
-                    data = zin.read(name)
-                    zout.writestr(item, data)
-                if wrapped_source:
-                    zout.writestr(f'lib/{lib_dir_name}/libfsr-gadget-script.js.so', wrapped_source)
-                    cfg = {
-                        'interaction': { 'type': 'script', 'path': 'libfsr-gadget-script.js.so' }
-                    }
-                    zout.writestr(f'lib/{lib_dir_name}/libfrida-gadget.config.so', json.dumps(cfg, indent=2))
-
-            # Align and sign
-            final_path = _fallback_align_and_sign(new_apk_path, workdir)
-            try:
-                fsz = os.path.getsize(final_path)
-            except Exception:
-                fsz = -1
-            log_to_fsr_logs(f"[GADGET][OBJ] Final APK: {final_path} (size={fsz} bytes)")
-            return send_file(final_path, as_attachment=True, download_name=os.path.basename(final_path), mimetype='application/vnd.android.package-archive')
 
         # Ensure apktool is available in environment (classic path)
         # Prefer a bundled tools/resources apktool jar if available
@@ -3157,6 +3007,8 @@ def run_frida():
 
         selected_script = request.form['selected_script']
         script_content = request.form['script_content']
+        # Optional extra CLI parameters for frida
+        frida_extra_args = request.form.get('frida_args', '').strip()
 
         is_auto_generated = (selected_script == "auto_generate")
         
@@ -3181,7 +3033,7 @@ def run_frida():
         if process and process.poll() is None:
             process.terminate()
 
-        socketio.start_background_task(run_frida_with_socketio, script_path, package)
+        socketio.start_background_task(run_frida_with_socketio, script_path, package, frida_extra_args)
 
 
         return jsonify({"result": f'Successfully started Frida on {package} using {selected_script}'}), 200
@@ -3191,14 +3043,42 @@ def run_frida():
         return jsonify({"error": f"Error: {e}"}), 500
 
     
-def run_frida_with_socketio(script_path, package):
-    global process, frida_output_buffer
+def run_frida_with_socketio(script_path, package, frida_extra_args:str = ""):
+    global process, frida_output_buffer, last_frida_command
 
     try:
         frida_output_buffer = []
-        
+        # Build frida command with optional extra args
         command = ["frida", "-l", script_path, "-U", "-f", package]
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+        extra_args_list = []
+        if frida_extra_args:
+            try:
+                import shlex
+                extra_args_list = shlex.split(frida_extra_args)
+            except Exception:
+                # Fallback simple split if shlex fails for any reason
+                extra_args_list = [arg for arg in frida_extra_args.split(" ") if arg]
+        if extra_args_list:
+            command.extend(extra_args_list)
+
+        # Save last command for reference and emit it to the Frida Logs UI
+        last_frida_command = " ".join(
+            [
+                # Quote arguments with spaces for readability
+                (f'"{c}"' if (" " in c and not c.startswith("\"")) else c)
+                for c in command
+            ]
+        )
+        socketio.emit("output", {"data": f"[COMMAND] {last_frida_command}\n"})
+
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1,
+        )
         
         while True:
             output = process.stdout.readline()
@@ -3221,6 +3101,33 @@ def run_frida_with_socketio(script_path, package):
         socketio.emit("output", {"data": "Frida process interrupted by user."})
     except Exception as e:
         socketio.emit("output", {"data": f"Error: {e}"})
+
+@app.route('/send-frida-input', methods=['POST'])
+def send_frida_input():
+    """Send interactive input to the running Frida CLI process."""
+    global process
+    try:
+        if not process or process.poll() is not None:
+            return jsonify({"success": False, "error": "Frida process is not running"}), 400
+
+        data = request.get_json(silent=True) or {}
+        user_input = data.get('input', '')
+        if user_input is None:
+            user_input = ''
+
+        # Ensure newline so CLI processes the command
+        with process_input_lock:
+            try:
+                process.stdin.write(user_input + "\n")
+                process.stdin.flush()
+            except Exception as e:
+                return jsonify({"success": False, "error": f"Failed to send input: {e}"}), 500
+
+        # Optionally echo what was sent into the Frida Logs
+        socketio.emit("output", {"data": f"[INPUT] {user_input}\n"})
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @socketio.on("connect")
 def handle_connect():
