@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}
+<title>Frida Script Runner | Gadget Manager</title>
+{% endblock %}
+
+{% block body %}
+<div class="container1">
+  <div class="justify-content-center logo">
+    <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" class="size-logo mt-3" alt="logo">
+    <h2 class="text-center white">Frida Gadget Manager</h2>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-hdd"></i> Cached Gadgets</span>
+      <a class="btn btn-sm btn-outline-light" href="/frida-gadget-injector">Back to Injector</a>
+    </div>
+    <div class="card-body bg-white">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label">Version</label>
+          <input type="text" class="form-control" id="gmVersion" placeholder="e.g. 16.7.19" />
+          <small class="text-muted">Enter exact tag (e.g., 16.7.19)</small>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Architecture</label>
+          <select id="gmArch" class="form-select">
+            <option>arm64-v8a</option>
+            <option>armeabi-v7a</option>
+            <option>x86_64</option>
+            <option>x86</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <button id="gmDownloadBtn" class="btn btn-primary"><i class="bi bi-download"></i> Download</button>
+        </div>
+      </div>
+
+      <hr/>
+      <div class="table-responsive">
+        <table class="table table-sm" id="gmTable">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Arch</th>
+              <th>Size</th>
+              <th>Path</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/frida_gadget_manager.js') }}"></script>
+{% endblock %}
+

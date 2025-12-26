@@ -41,8 +41,18 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/frida-server-manager') %}active{% endif %}" href="{{ url_for('frida_server_manager_page') }}">
+                            <i class="bi bi-hdd-network"></i> Frida Server
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith('/features') %}active{% endif %}" href="{{ url_for('features') }}">
                             <i class="bi bi-grid"></i> Features
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/frida-gadget-injector') %}active{% endif %}" href="{{ url_for('frida_gadget_injector_page') }}">
+                            <i class="bi bi-plug"></i> Gadget Injector
                         </a>
                     </li>
                     <li class="nav-item">

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, abort
+from flask import Flask, render_template, request, jsonify, send_file, abort, after_this_request
 from flask_socketio import SocketIO
 from colorama import Fore
 from werkzeug.utils import secure_filename
@@ -18,6 +18,8 @@ import shutil
 import lzma
 import wget
 import subprocess
+import xml.etree.ElementTree as ET
+import tempfile
 
 from mobile_proxy import (
     get_current_mobile_proxy,
@@ -39,6 +41,7 @@ process = None
 frida_output_buffer = []
 current_script_path = None
 SCRIPTS_DIRECTORY = f"{os.getcwd()}/scripts"
+GADGET_CACHE_DIR = os.path.join(os.getcwd(), 'frida-gadget', 'android')
 
 if os.path.exists("/.dockerenv"):
     CODEX_BRIDGE_URL = "http://host.docker.internal:8091"
@@ -112,6 +115,2069 @@ def get_device_platform(device_info):
         return "ios"
     else:
         return "unknown"
+
+# -------------------- Frida Server Manager: Views & APIs --------------------
+@app.route('/frida-server-manager')
+def frida_server_manager_page():
+    """Render the Frida Server Manager page."""
+    try:
+        devices = there_is_adb_and_devices()
+        return render_template('frida_server_manager.html', devices=devices.get('available_devices', []))
+    except Exception as e:
+        return render_template('frida_server_manager.html', devices=[], error=str(e))
+
+
+@app.route('/api/adb/devices')
+def api_adb_devices():
+    """Return connected devices with Android architecture info where applicable."""
+    try:
+        info = there_is_adb_and_devices()
+        devices = []
+        for dev in info.get('available_devices', []):
+            dev_copy = dict(dev)
+            if 'device_id' in dev_copy:
+                try:
+                    arch = run_adb_command(["adb", "-s", dev_copy['device_id'], "shell", "getprop", "ro.product.cpu.abi"]) or ''
+                    dev_copy['architecture'] = arch.strip()
+                except Exception:
+                    dev_copy['architecture'] = 'unknown'
+            devices.append(dev_copy)
+        return jsonify({
+            'success': True,
+            'devices': devices,
+            'message': info.get('message', '')
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/frida/releases')
+def api_frida_releases():
+    """Fetch Frida releases from GitHub and return a list of tag names."""
+    try:
+        releases_url = 'https://api.github.com/repos/frida/frida/releases'
+        resp = requests.get(releases_url, timeout=30)
+        tags = []
+        if resp.status_code == 200:
+            data = resp.json()
+            tags = [r.get('tag_name') for r in data if r.get('tag_name')]
+        else:
+            # Fallback to tags endpoint
+            tags_url = 'https://api.github.com/repos/frida/frida/tags'
+            r2 = requests.get(tags_url, timeout=30)
+            if r2.status_code == 200:
+                data = r2.json()
+                tags = [t.get('name') for t in data if t.get('name')]
+        # Normalize tags (strip leading 'refs/tags/' if any)
+        tags = [t.replace('refs/tags/', '') for t in tags]
+        # Keep last 50 entries as a decent selection
+        return jsonify({'success': True, 'releases': tags[:50]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/frida/local')
+def api_frida_local():
+    """Return local Frida client and tools versions inside the environment."""
+    try:
+        client_version = 'Unknown'
+        tools_version = 'Unknown'
+        py_core_version = 'Unknown'
+
+        try:
+            r = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=30)
+            if r.returncode == 0:
+                client_version = r.stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            r = subprocess.run([sys.executable, '-c', 'import pkgutil, pkg_resources;import sys;print(pkg_resources.get_distribution("frida-tools").version) if pkgutil.find_loader("pkg_resources") else sys.stdout.write("")'],
+                               capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and r.stdout.strip():
+                tools_version = r.stdout.strip()
+        except Exception:
+            pass
+
+        try:
+            r = subprocess.run([sys.executable, '-c', 'import frida,sys;sys.stdout.write(frida.__version__)'],
+                               capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and r.stdout.strip():
+                py_core_version = r.stdout.strip()
+        except Exception:
+            pass
+
+        return jsonify({
+            'success': True,
+            'client_version': client_version,
+            'frida_tools_version': tools_version,
+            'frida_py_version': py_core_version,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/frida/set-client-version', methods=['POST'])
+def api_set_frida_client_version():
+    """Install a specific Frida client (Python frida) version and upgrade frida-tools."""
+    try:
+        data = request.get_json(force=True)
+        version = (data.get('version') or '').strip()
+        if not version:
+            return jsonify({'success': False, 'error': 'version is required'}), 400
+
+        # Install specific frida core version
+        cmd1 = [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '--upgrade', f'frida=={version}']
+        r1 = subprocess.run(cmd1, capture_output=True, text=True, timeout=600)
+        if r1.returncode != 0:
+            return jsonify({'success': False, 'error': f'pip error (frida=={version}): {r1.stderr or r1.stdout}'}), 500
+
+        # Upgrade frida-tools to latest compatible
+        cmd2 = [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '--upgrade', 'frida-tools']
+        r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=600)
+        if r2.returncode != 0:
+            # Not fatal; continue but report warning
+            log_to_fsr_logs(f"[FSM] Warning: upgrading frida-tools failed: {r2.stderr or r2.stdout}")
+
+        # Verify new version
+        r3 = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=60)
+        ver = r3.stdout.strip() if r3.returncode == 0 else 'Unknown'
+        return jsonify({'success': True, 'client_version': ver})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/start-frida-server-version', methods=['POST'])
+def start_frida_server_version():
+    """Start Frida server on a device using a specific version tag."""
+    try:
+        data = request.get_json(force=True)
+        device_id = data.get('device_id')
+        version = data.get('version')
+        if not device_id or not version:
+            return jsonify({'success': False, 'error': 'device_id and version are required'}), 400
+
+        adb_check = there_is_adb_and_devices()
+        if not adb_check.get('is_true'):
+            return jsonify({'success': False, 'error': 'No devices connected'}), 400
+
+        # Find target device (Android only)
+        target = None
+        for d in adb_check.get('available_devices', []):
+            if d.get('device_id') == device_id:
+                target = d
+                break
+        if not target:
+            return jsonify({'success': False, 'error': 'Device not found'}), 404
+
+        if 'device_id' not in target:
+            return jsonify({'success': False, 'error': 'Only Android devices require frida-server binary'}), 400
+
+        # Determine arch
+        arch_raw = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.cpu.abi"]) or ''
+        clean_arch = arch_raw.strip().split('-')[0]
+        log_to_fsr_logs(f"[FSM] Device {device_id} arch: {arch_raw} -> {clean_arch}")
+
+        # Prepare local paths
+        os.makedirs('./frida-server/android', exist_ok=True)
+        frida_server_path = os.path.join('./frida-server/android', 'frida-server')
+        download_path = os.path.join('frida-server/android', 'frida-server-download.xz')
+
+        # Get release asset URL for given version
+        url = get_frida_server_url(clean_arch, version)
+        if not url:
+            return jsonify({'success': False, 'error': f'No asset found for version {version} arch {clean_arch}'}), 404
+
+        log_to_fsr_logs(f"[FSM] Downloading frida-server {version} for {clean_arch}")
+        wget.download(url, download_path)
+        with lzma.open(download_path) as src, open(frida_server_path, 'wb') as dst:
+            shutil.copyfileobj(src, dst)
+        if os.path.exists(download_path):
+            os.remove(download_path)
+
+        # Push binary and set perms
+        run_adb_command(["adb", "-s", device_id, "root"])
+        run_adb_push_command(device_id, frida_server_path, "/data/local/tmp/frida-server")
+        run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", "/data/local/tmp/frida-server"]) 
+
+        # Kill any existing frida processes
+        try:
+            run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
+        except Exception:
+            pass
+
+        # Start as root with fallbacks
+        try:
+            subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+        except subprocess.TimeoutExpired:
+            try:
+                subprocess.run(["adb", "-s", device_id, "shell", "su", "root", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+            except subprocess.TimeoutExpired:
+                subprocess.run(["adb", "-s", device_id, "shell", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+
+        time.sleep(3)
+        running = is_frida_server_running(device_id)
+        return jsonify({'success': True, 'running': running, 'device_id': device_id, 'version': version})
+    except Exception as e:
+        log_to_fsr_logs(f"[FSM] Error starting frida-server with version: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# -------------------- Frida Gadget Injector (Android) --------------------
+def get_frida_gadget_url(architecture: str, version: str = None) -> str:
+    """Find the frida-gadget asset URL for the given arch and version.
+
+    architecture examples: arm64-v8a, armeabi-v7a, x86_64, x86
+    """
+    if version:
+        url = f'https://api.github.com/repos/frida/frida/releases/tags/{version}'
+        log_to_fsr_logs(f"[GADGET] Requesting gadget for version: {version}")
+    else:
+        url = 'https://api.github.com/repos/frida/frida/releases/latest'
+        log_to_fsr_logs(f"[GADGET] Requesting gadget for latest version")
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        release_data = response.json()
+
+        clean_arch = architecture.strip()
+        # Map ABI to frida asset arch naming when needed
+        arch_map = {
+            'arm64-v8a': 'arm64',
+            'armeabi-v7a': 'arm',
+            'x86_64': 'x86_64',
+            'x86': 'x86'
+        }
+        frida_arch = arch_map.get(clean_arch, clean_arch)
+
+        for asset in release_data.get('assets', []):
+            name = asset.get('name', '')
+            if 'frida-gadget' in name and 'android' in name and f'-{frida_arch}.so' in name and name.endswith('.xz'):
+                return asset['browser_download_url']
+        return None
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Failed to resolve gadget URL: {e}")
+        return None
+
+
+@app.route('/frida-gadget-injector')
+def frida_gadget_injector_page():
+    return render_template('frida_gadget_injector.html')
+
+
+def _list_cached_gadgets():
+    items = []
+    base = GADGET_CACHE_DIR
+    if not os.path.isdir(base):
+        return items
+    for ver in sorted(os.listdir(base)):
+        vdir = os.path.join(base, ver)
+        if not os.path.isdir(vdir):
+            continue
+        for arch in sorted(os.listdir(vdir)):
+            adir = os.path.join(vdir, arch)
+            so_path = os.path.join(adir, 'libfrida-gadget.so')
+            if os.path.isfile(so_path):
+                try:
+                    size = os.path.getsize(so_path)
+                except Exception:
+                    size = -1
+                items.append({'version': ver, 'arch': arch, 'path': so_path, 'size': size})
+    return items
+
+
+def _ensure_cached_gadget(architecture: str, version: str) -> str:
+    os.makedirs(GADGET_CACHE_DIR, exist_ok=True)
+    ver_dir = os.path.join(GADGET_CACHE_DIR, version)
+    arch_dir = os.path.join(ver_dir, architecture)
+    so_path = os.path.join(arch_dir, 'libfrida-gadget.so')
+    if os.path.isfile(so_path):
+        return so_path
+    # Download and cache
+    url = get_frida_gadget_url(architecture, version)
+    if not url:
+        raise RuntimeError(f'No frida-gadget asset found for version {version} arch {architecture}')
+    os.makedirs(arch_dir, exist_ok=True)
+    xz_tmp = os.path.join(arch_dir, 'libfrida-gadget.so.xz')
+    log_to_fsr_logs(f"[GADGET][CACHE] Downloading gadget {version} {architecture}")
+    wget.download(url, xz_tmp)
+    with lzma.open(xz_tmp) as src, open(so_path, 'wb') as dst:
+        shutil.copyfileobj(src, dst)
+    try:
+        os.remove(xz_tmp)
+    except Exception:
+        pass
+    return so_path
+
+
+@app.route('/frida-gadget-manager')
+def frida_gadget_manager_page():
+    return render_template('frida_gadget_manager.html')
+
+
+@app.route('/api/gadget/local')
+def api_gadget_local():
+    try:
+        return jsonify({'success': True, 'items': _list_cached_gadgets()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/gadget/download', methods=['POST'])
+def api_gadget_download():
+    try:
+        data = request.get_json(force=True)
+        version = (data.get('version') or '').strip()
+        arch = (data.get('arch') or '').strip() or 'arm64-v8a'
+        if not version:
+            return jsonify({'success': False, 'error': 'version is required'}), 400
+        path = _ensure_cached_gadget(arch, version)
+        size = os.path.getsize(path)
+        return jsonify({'success': True, 'path': path, 'size': size})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/gadget/delete', methods=['POST'])
+def api_gadget_delete():
+    try:
+        data = request.get_json(force=True)
+        version = (data.get('version') or '').strip()
+        arch = (data.get('arch') or '').strip()
+        if not version or not arch:
+            return jsonify({'success': False, 'error': 'version and arch are required'}), 400
+        dir_path = os.path.join(GADGET_CACHE_DIR, version, arch)
+        if os.path.isdir(dir_path):
+            shutil.rmtree(dir_path, ignore_errors=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _determine_smali_dir(workdir: str) -> str:
+    # Prefer 'smali' then any 'smali*'
+    primary = os.path.join(workdir, 'smali')
+    if os.path.isdir(primary):
+        return primary
+    for name in os.listdir(workdir):
+        if name.startswith('smali') and os.path.isdir(os.path.join(workdir, name)):
+            return os.path.join(workdir, name)
+    return None
+
+
+def _modify_manifest_add_application(manifest_path: str, app_class: str) -> bool:
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        app = root.find('application')
+        if app is None:
+            return False
+        name_attr = app.get(android_ns + 'name')
+        if name_attr and name_attr.strip():
+            # Already has Application set; v1 injector does not chain
+            return False
+        app.set(android_ns + 'name', app_class)
+        tree.write(manifest_path, encoding='utf-8', xml_declaration=True)
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Manifest modify failed: {e}")
+        return False
+
+
+def _write_application_smali(smali_dir: str, app_class: str) -> bool:
+    # app_class like 'com.fsr.FSRApp'
+    try:
+        parts = app_class.split('.')
+        class_name = parts[-1]
+        package_dirs = os.path.join(smali_dir, *parts[:-1])
+        os.makedirs(package_dirs, exist_ok=True)
+        dest = os.path.join(package_dirs, f"{class_name}.smali")
+        internal_name = 'L' + '/'.join(parts) + ';'
+        content = f"""
+.class public {internal_name}
+.super Landroid/app/Application;
+.source "{class_name}.java"
+
+.method public constructor <init>()V
+    .locals 0
+    invoke-direct {{p0}}, Landroid/app/Application;-><init>()V
+    return-void
+.end method
+
+.method public onCreate()V
+    .locals 1
+    const-string v0, "frida-gadget"
+    invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+    invoke-super {{p0}}, Landroid/app/Application;->onCreate()V
+    return-void
+.end method
+""".strip()
+        with open(dest, 'w', encoding='utf-8') as f:
+            f.write(content + "\n")
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Write smali failed: {e}")
+        return False
+
+
+def _get_manifest_application_name(manifest_path: str) -> str:
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                name = child.get(android_ns + 'name', '') or child.get('name', '')
+                return name or ''
+    except Exception:
+        pass
+    try:
+        with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+            txt = f.read()
+        import re
+        m = re.search(r'<application[^>]*android:name="([^"]+)"', txt, re.IGNORECASE | re.DOTALL)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return ''
+
+
+def _write_app_wrapper_smali(smali_dir: str, wrapper_class: str, base_class: str) -> bool:
+    try:
+        # wrapper_class like 'com.fsr.AppWrapper', base_class like 'com.aminivan.applications.BaseApplication'
+        w_parts = wrapper_class.split('.')
+        b_parts = base_class.split('.')
+        w_class_name = w_parts[-1]
+        w_pkg_dirs = os.path.join(smali_dir, *w_parts[:-1])
+        os.makedirs(w_pkg_dirs, exist_ok=True)
+        dest = os.path.join(w_pkg_dirs, f"{w_class_name}.smali")
+        w_internal = 'L' + '/'.join(w_parts) + ';'
+        b_internal = 'L' + '/'.join(b_parts) + ';'
+        content = f"""
+.class public {w_internal}
+.super {b_internal}
+.source "{w_class_name}.java"
+
+.method public constructor <init>()V
+    .locals 0
+    invoke-direct {{p0}}, {b_internal}-><init>()V
+    return-void
+.end method
+
+.method public onCreate()V
+    .locals 1
+    const-string v0, "frida-gadget"
+    invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+    invoke-super {{p0}}, {b_internal}->onCreate()V
+    return-void
+.end method
+""".strip()
+        with open(dest, 'w', encoding='utf-8') as f:
+            f.write(content + "\n")
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Write app wrapper smali failed: {e}")
+        return False
+
+
+def _modify_manifest_set_application(manifest_path: str, new_app_class: str) -> bool:
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        app = None
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                app = child
+                break
+        if app is None:
+            raise RuntimeError('application tag not found')
+        app.set(android_ns + 'name', new_app_class)
+        tree.write(manifest_path, encoding='utf-8', xml_declaration=True)
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Manifest set application failed: {e}")
+        # Fallback text replace
+        try:
+            with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+                txt = f.read()
+            import re
+            if re.search(r'android:name="[^"]+"', txt):
+                new_txt = re.sub(r'(android:name=")([^"]+)(")', rf'\1{new_app_class}\3', txt, count=1)
+            else:
+                # Insert name attr in <application ...>
+                m = re.search(r'<application\b', txt, re.IGNORECASE)
+                if not m:
+                    raise RuntimeError('cannot find <application> to set name')
+                pos = m.end()
+                new_txt = txt[:pos] + f' android:name="{new_app_class}"' + txt[pos:]
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                f.write(new_txt)
+            return True
+        except Exception as e2:
+            log_to_fsr_logs(f"[GADGET] Text set application failed: {e2}")
+            return False
+
+
+def _get_manifest_component_factory(manifest_path: str) -> str:
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                val = child.get(android_ns + 'appComponentFactory', '') or child.get('appComponentFactory', '')
+                return val or ''
+    except Exception:
+        pass
+    try:
+        with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+            txt = f.read()
+        import re
+        m = re.search(r'appComponentFactory\s*=\s*"([^"]+)"', txt, re.IGNORECASE)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return ''
+
+
+def _write_component_factory_wrapper_smali(smali_dir: str, wrapper_class: str, base_factory_class: str) -> bool:
+    try:
+        w_parts = wrapper_class.split('.')
+        b_parts = (base_factory_class or 'android.app.AppComponentFactory').split('.')
+        w_class_name = w_parts[-1]
+        w_pkg_dirs = os.path.join(smali_dir, *w_parts[:-1])
+        os.makedirs(w_pkg_dirs, exist_ok=True)
+        dest = os.path.join(w_pkg_dirs, f"{w_class_name}.smali")
+        w_internal = 'L' + '/'.join(w_parts) + ';'
+        b_internal = 'L' + '/'.join(b_parts) + ';'
+        content = f"""
+.class public {w_internal}
+.super {b_internal}
+.source "{w_class_name}.java"
+
+.method public constructor <init>()V
+    .locals 0
+    invoke-direct {{p0}}, {b_internal}-><init>()V
+    return-void
+.end method
+
+.method public instantiateApplication(Ljava/lang/ClassLoader;Ljava/lang/String;)Landroid/app/Application;
+    .locals 1
+    const-string v0, "frida-gadget"
+    invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+    invoke-super {{p0, p1, p2}}, {b_internal}->instantiateApplication(Ljava/lang/ClassLoader;Ljava/lang/String;)Landroid/app/Application;
+    move-result-object v0
+    return-object v0
+.end method
+""".strip()
+        with open(dest, 'w', encoding='utf-8') as f:
+            f.write(content + "\n")
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Write component factory wrapper failed: {e}")
+        return False
+
+
+def _modify_manifest_set_component_factory(manifest_path: str, new_factory_class: str) -> bool:
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        app = None
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                app = child
+                break
+        if app is None:
+            raise RuntimeError('application tag not found')
+        app.set(android_ns + 'appComponentFactory', new_factory_class)
+        tree.write(manifest_path, encoding='utf-8', xml_declaration=True)
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Manifest set component factory failed: {e}")
+        # Text fallback
+        try:
+            with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+                txt = f.read()
+            import re
+            if re.search(r'appComponentFactory\s*=\s*"[^"]+"', txt, re.IGNORECASE):
+                new_txt = re.sub(r'(appComponentFactory\s*=\s*")([^"]+)(")', rf'\1{new_factory_class}\3', txt, count=1, flags=re.IGNORECASE)
+            else:
+                m = re.search(r'<application\b', txt, re.IGNORECASE)
+                if not m:
+                    raise RuntimeError('cannot find <application> to set appComponentFactory')
+                pos = m.end()
+                new_txt = txt[:pos] + f' android:appComponentFactory="{new_factory_class}"' + txt[pos:]
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                f.write(new_txt)
+            return True
+        except Exception as e2:
+            log_to_fsr_logs(f"[GADGET] Text set component factory failed: {e2}")
+            return False
+
+
+def _debug_log_manifest(manifest_path: str):
+    try:
+        with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+            txt = f.read()
+        head = txt[:400].replace('\n', ' ')
+        flags = []
+        for token in ['<application', '</application', '<activity', '<provider', 'android:name=']:
+            if token.lower() in txt.lower():
+                flags.append(token)
+        log_to_fsr_logs(f"[GADGET][MANIFEST] path={manifest_path}, size={len(txt)} flags={','.join(flags)}")
+        log_to_fsr_logs(f"[GADGET][MANIFEST][HEAD] {head}")
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET][MANIFEST] failed to read: {e}")
+
+
+def _find_manifest_file(workdir: str) -> str:
+    # Prefer root AndroidManifest.xml, but search recursively as fallback
+    root_path = os.path.join(workdir, 'AndroidManifest.xml')
+    if os.path.isfile(root_path):
+        return root_path
+    for dirpath, dirnames, filenames in os.walk(workdir):
+        for fn in filenames:
+            if fn == 'AndroidManifest.xml':
+                return os.path.join(dirpath, fn)
+    return root_path  # default expected path
+
+
+def _is_text_xml(file_path: str) -> bool:
+    try:
+        with open(file_path, 'rb') as f:
+            head = f.read(16)
+        return head.startswith(b'<?xml') or head.lstrip().startswith(b'<?xml')
+    except Exception:
+        return False
+
+
+def _run_apktool_decode_full(apktool_path: str, apk_path: str, out_dir: str):
+    apktool_lower = apktool_path.lower()
+    if apktool_lower.endswith('.jar'):
+        cmd = ['java', '-jar', apktool_path, 'd', apk_path, '-o', out_dir, '-f', '--use-aapt2']
+    elif apktool_lower.endswith(('.exe', '.bat')):
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '--use-aapt2']
+    else:
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '--use-aapt2']
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or result.stdout)
+
+
+def _sanitize_aapt_invalid_resources(workdir: str) -> int:
+    """Sanitize resource file names and references to satisfy aapt/aapt2 rules.
+
+    - Renames files under res/* whose basenames contain characters outside [a-z0-9_.]
+      (e.g., names starting with '$' like $avd_hide_password__0.xml).
+    - Ensures the first character is a letter by prefixing 'x' if needed.
+    - Updates references in XML files (res/**/* and AndroidManifest.xml) from
+      @type/old_name to @type/new_name.
+    - Updates res/values/public.xml <public name="..."> entries accordingly.
+
+    Returns the number of renamed files.
+    """
+    res_dir = os.path.join(workdir, 'res')
+    if not os.path.isdir(res_dir):
+        return 0
+
+    def res_type_from_dir(dname: str) -> str:
+        return dname.split('-')[0] if dname else dname
+
+    # Gather files to sanitize
+    changes = {}  # (res_type, old_base) -> new_base
+    renamed_count = 0
+    for entry in os.listdir(res_dir):
+        full = os.path.join(res_dir, entry)
+        if not os.path.isdir(full):
+            continue
+        rtype = res_type_from_dir(entry.lower())
+        for root, _, files in os.walk(full):
+            for fn in files:
+                base, ext = os.path.splitext(fn)
+                old_base = base
+                # Allowed characters
+                new_base = re.sub(r'[^a-z0-9_.]', '_', old_base.lower())
+                # Must start with a letter
+                if not new_base or not new_base[0].isalpha():
+                    new_base = 'x' + new_base
+                if new_base == old_base:
+                    continue
+                src = os.path.join(root, fn)
+                dst = os.path.join(root, new_base + ext)
+                # Ensure uniqueness
+                if os.path.exists(dst):
+                    suffix = 2
+                    while os.path.exists(os.path.join(root, f"{new_base}_{suffix}{ext}")):
+                        suffix += 1
+                    dst = os.path.join(root, f"{new_base}_{suffix}{ext}")
+                    new_base = f"{new_base}_{suffix}"
+                try:
+                    os.rename(src, dst)
+                    changes[(rtype, old_base)] = new_base
+                    renamed_count += 1
+                except Exception as e:
+                    log_to_fsr_logs(f"[GADGET][SANITIZE] rename failed {src} -> {dst}: {e}")
+
+    if not changes:
+        return 0
+
+    # Update references in XML files
+    def _rewrite_file(path: str):
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                txt = f.read()
+            orig = txt
+            for (rtype, old), new in changes.items():
+                txt = txt.replace(f"@{rtype}/{old}", f"@{rtype}/{new}")
+            if txt != orig:
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(txt)
+        except Exception as e:
+            log_to_fsr_logs(f"[GADGET][SANITIZE] ref update failed for {path}: {e}")
+
+    for root, _, files in os.walk(res_dir):
+        for fn in files:
+            if fn.lower().endswith('.xml'):
+                _rewrite_file(os.path.join(root, fn))
+
+    # AndroidManifest.xml
+    manifest_path = _find_manifest_file(workdir)
+    if os.path.exists(manifest_path):
+        _rewrite_file(manifest_path)
+
+    # Update values/public.xml if present
+    public_xml = os.path.join(res_dir, 'values', 'public.xml')
+    if os.path.exists(public_xml):
+        try:
+            ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+            tree = ET.parse(public_xml)
+            root = tree.getroot()
+            for (rtype, old), new in changes.items():
+                for node in root.findall('public'):
+                    t = node.get('type')
+                    n = node.get('name')
+                    if t == rtype and n == old:
+                        node.set('name', new)
+            tree.write(public_xml, encoding='utf-8', xml_declaration=True)
+        except Exception as e:
+            log_to_fsr_logs(f"[GADGET][SANITIZE] public.xml update failed: {e}")
+
+    log_to_fsr_logs(f"[GADGET] Sanitized {renamed_count} resource name(s) for aapt compliance")
+    return renamed_count
+
+def _ensure_text_manifest(apktool_path: str, apk_path: str, workdir: str) -> str:
+    manifest_path = _find_manifest_file(workdir)
+    if not os.path.exists(manifest_path):
+        return manifest_path
+    if _is_text_xml(manifest_path):
+        return manifest_path
+    # Try apkanalyzer to dump text manifest
+    try:
+        apkanalyzer = shutil.which('apkanalyzer') or '/opt/android-sdk/cmdline-tools/latest/bin/apkanalyzer'
+        if apkanalyzer and os.path.exists(apkanalyzer):
+            pr = subprocess.run([apkanalyzer, 'manifest', 'print', apk_path], capture_output=True, text=True, timeout=120)
+            if pr.returncode == 0 and pr.stdout.strip().startswith('<?xml'):
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(pr.stdout)
+                log_to_fsr_logs(f"[GADGET] Replaced binary manifest with text via apkanalyzer")
+                return manifest_path
+            else:
+                log_to_fsr_logs(f"[GADGET] apkanalyzer failed: {pr.stderr or pr.stdout}")
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] apkanalyzer manifest print failed: {e}")
+    # Fallback: secondary full decode and copy manifest
+    try:
+        tmp_dir = tempfile.mkdtemp(prefix='manifest_only_')
+        _run_apktool_decode_full(apktool_path, apk_path, tmp_dir)
+        tmp_manifest = _find_manifest_file(tmp_dir)
+        if os.path.exists(tmp_manifest) and _is_text_xml(tmp_manifest):
+            shutil.copyfile(tmp_manifest, manifest_path)
+            log_to_fsr_logs(f"[GADGET] Replaced binary manifest with text manifest from secondary decode")
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] ensure_text_manifest fallback failed: {e}")
+    return manifest_path
+
+
+def _find_apktool_from_resources() -> str:
+    try:
+        candidates = []
+        base = os.path.join('tools', 'resources')
+        if os.path.isdir(base):
+            # Prefer specific jar names first
+            for name in [
+                'apktool_2.12.1.jar',
+                'apktool_2.12.0.jar',
+                'apktool_2.11.0.jar',
+                'apktool.jar',
+            ]:
+                p = os.path.join(base, name)
+                if os.path.isfile(p):
+                    candidates.append(p)
+            # Fallback to generic binaries
+            for name in ['apktool', 'apktool.exe']:
+                p = os.path.join(base, name)
+                if os.path.isfile(p):
+                    candidates.append(p)
+        for p in candidates:
+            return p
+    except Exception:
+        pass
+    return ''
+def _read_manifest_package(manifest_path: str) -> str:
+    try:
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        pkg = root.get('package', '') or ''
+        if pkg:
+            return pkg
+    except Exception:
+        pass
+    # Fallback to regex on plain text
+    try:
+        with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+            text = f.read()
+        import re
+        m = re.search(r'package\s*=\s*"([^"]+)"', text)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return ''
+
+
+def _detect_split_apk(manifest_path: str):
+    """Return (is_split, details) by scanning manifest attributes and structure."""
+    try:
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        attrs = root.attrib.copy()
+        split_attrs = []
+        for k, v in attrs.items():
+            lk = k.lower()
+            if 'split' in lk or 'config' in lk:
+                split_attrs.append(f"{k}={v}")
+        # Check application presence
+        has_app = False
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                has_app = True
+                break
+        # Find MAIN/LAUNCHER activity
+        main_act = _find_main_activity(manifest_path)
+        if not has_app or not main_act:
+            if split_attrs:
+                return True, f"split-like manifest ({', '.join(split_attrs)}), has_app={has_app}, main_activity={bool(main_act)}"
+            return False, f"has_app={has_app}, main_activity={bool(main_act)}"
+        return False, 'looks like base/universal'
+    except Exception as e:
+        return False, f"manifest parse error: {e}"
+
+
+def _write_provider_smali(smali_dir: str, provider_class: str) -> bool:
+    try:
+        parts = provider_class.split('.')
+        class_name = parts[-1]
+        package_dirs = os.path.join(smali_dir, *parts[:-1])
+        os.makedirs(package_dirs, exist_ok=True)
+        dest = os.path.join(package_dirs, f"{class_name}.smali")
+        internal = 'L' + '/'.join(parts) + ';'
+        content = f"""
+.class public {internal}
+.super Landroid/content/ContentProvider;
+.source "{class_name}.java"
+
+.method public constructor <init>()V
+    .locals 0
+    invoke-direct {{p0}}, Landroid/content/ContentProvider;-><init>()V
+    return-void
+.end method
+
+.method public onCreate()Z
+    .locals 8
+    const-string v0, "FSR"
+    invoke-virtual {{p0}}, Landroid/content/ContentProvider;->getContext()Landroid/content/Context;
+    move-result-object v1
+    invoke-virtual {{v1}}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+    move-result-object v2
+    new-instance v3, Ljava/lang/StringBuilder;
+    invoke-direct {{v3}}, Ljava/lang/StringBuilder;-><init>()V
+    const-string v4, "FSRInit ContentProvider onCreate() pkg="
+    invoke-virtual {{v3, v4}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v3
+    invoke-virtual {{v3, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v3
+    invoke-virtual {{v3}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v3
+    invoke-static {{v0, v3}}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+
+    # Log nativeLibraryDir and config existence
+    invoke-virtual {{p0}}, Landroid/content/ContentProvider;->getContext()Landroid/content/Context;
+    move-result-object v1
+    invoke-virtual {{v1}}, Landroid/content/Context;->getApplicationInfo()Landroid/content/pm/ApplicationInfo;
+    move-result-object v1
+    iget-object v2, v1, Landroid/content/pm/ApplicationInfo;->nativeLibraryDir:Ljava/lang/String;
+
+    new-instance v3, Ljava/lang/StringBuilder;
+    invoke-direct {{v3}}, Ljava/lang/StringBuilder;-><init>()V
+    invoke-virtual {{v3, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v3
+    const-string v4, "/libfrida-gadget.config.so"
+    invoke-virtual {{v3, v4}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v3
+    invoke-virtual {{v3}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v3
+
+    new-instance v4, Ljava/io/File;
+    invoke-direct {{v4, v3}}, Ljava/io/File;-><init>(Ljava/lang/String;)V
+    invoke-virtual {{v4}}, Ljava/io/File;->exists()Z
+    move-result v5
+
+    new-instance v6, Ljava/lang/StringBuilder;
+    invoke-direct {{v6}}, Ljava/lang/StringBuilder;-><init>()V
+    const-string v7, "Gadget config: "
+    invoke-virtual {{v6, v7}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v6
+    invoke-virtual {{v6, v3}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v6
+    const-string v7, " exists="
+    invoke-virtual {{v6, v7}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v6
+    invoke-virtual {{v6, v5}}, Ljava/lang/StringBuilder;->append(Z)Ljava/lang/StringBuilder;
+    move-result-object v6
+    invoke-virtual {{v6}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v6
+    invoke-static {{v0, v6}}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+
+    const-string v0, "frida-gadget"
+    invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+    const/4 v0, 0x1
+    return v0
+.end method
+
+.method public query(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
+    .locals 1
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+.method public getType(Landroid/net/Uri;)Ljava/lang/String;
+    .locals 1
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+.method public insert(Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
+    .locals 1
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+.method public delete(Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
+    .locals 1
+    const/4 v0, 0x0
+    return v0
+.end method
+
+.method public update(Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
+    .locals 1
+    const/4 v0, 0x0
+    return v0
+.end method
+""".strip()
+        with open(dest, 'w', encoding='utf-8') as f:
+            f.write(content + "\n")
+        return True
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] Write provider smali failed: {e}")
+        return False
+
+
+def _inject_provider_manifest(manifest_path: str, provider_class: str, authorities: str):
+    # First try XML-based approach
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        app = None
+        # Robustly find application element regardless of namespaces
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                app = child
+                break
+        if app is None:
+            raise RuntimeError('application tag not found')
+        # Check if provider already exists
+        for prov in app.iter():
+            if not getattr(prov, 'tag', '').endswith('provider'):
+                continue
+            name = prov.get(android_ns + 'name', '') or prov.get('android:name', '') or prov.get('name', '')
+            if name == provider_class:
+                return True, 'provider already present'
+        prov = ET.SubElement(app, 'provider')
+        prov.set(android_ns + 'name', provider_class)
+        prov.set(android_ns + 'authorities', authorities)
+        prov.set(android_ns + 'exported', 'false')
+        prov.set(android_ns + 'initOrder', '199999')
+        tree.write(manifest_path, encoding='utf-8', xml_declaration=True)
+        return True, 'xml injection ok'
+    except Exception as e:
+        log_to_fsr_logs(f"[GADGET] XML inject provider failed: {e}. Trying text fallback")
+        # Fallback: plain-text injection before </application>
+        try:
+            with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+                txt = f.read()
+            if provider_class in txt:
+                return True, 'provider found by text search'
+            import re
+            snippet = (
+                f'    <provider android:name="{provider_class}" '
+                f'android:authorities="{authorities}" '
+                f'android:exported="false" android:initOrder="199999" />\n'
+            )
+            m = re.search(r'</application\s*>', txt, re.IGNORECASE)
+            if m:
+                pos = m.start()
+                new_txt = txt[:pos] + snippet + txt[pos:]
+                method = 'inserted before </application>'
+            else:
+                # Insert after <application ...>
+                m2 = re.search(r'<application[^>]*>', txt, re.IGNORECASE | re.DOTALL)
+                if m2:
+                    pos = m2.end()
+                    new_txt = txt[:pos] + '\n' + snippet + txt[pos:]
+                    method = 'inserted after <application>'
+                else:
+                    # Heuristic: insert before first <provider> or <activity> inside application block
+                    mp = re.search(r'<provider\b', txt, re.IGNORECASE)
+                    if mp:
+                        pos = mp.start()
+                        new_txt = txt[:pos] + snippet + txt[pos:]
+                        method = 'inserted before first <provider>'
+                    else:
+                        ma = re.search(r'<activity\b', txt, re.IGNORECASE)
+                        if ma:
+                            pos = ma.start()
+                            new_txt = txt[:pos] + snippet + txt[pos:]
+                            method = 'inserted before first <activity>'
+                        else:
+                            raise RuntimeError('application tags not found for text injection (no <application>, <provider>, or <activity>)')
+            # Ensure xmlns:android exists
+            if 'xmlns:android' not in new_txt:
+                new_txt = new_txt.replace('<manifest', '<manifest xmlns:android="http://schemas.android.com/apk/res/android"', 1)
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                f.write(new_txt)
+            return True, f'text injection ok ({method})'
+        except Exception as e2:
+            log_to_fsr_logs(f"[GADGET] Text inject provider failed: {e2}")
+            return False, f'text injection failed: {e2}'
+
+
+def _list_smali_roots(workdir: str):
+    roots = []
+    try:
+        for name in os.listdir(workdir):
+            p = os.path.join(workdir, name)
+            if os.path.isdir(p) and name.startswith('smali'):
+                roots.append(p)
+    except Exception:
+        pass
+    # Prefer plain 'smali' first
+    roots.sort(key=lambda d: (0 if os.path.basename(d) == 'smali' else 1, d))
+    return roots
+
+
+def _find_main_activity(manifest_path: str) -> str:
+    try:
+        ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        android_ns = '{http://schemas.android.com/apk/res/android}'
+        package_name = root.get('package', '') or _read_manifest_package(manifest_path) or ''
+        app = None
+        for child in root.iter():
+            if child.tag.endswith('application'):
+                app = child
+                break
+        if app is None:
+            raise RuntimeError('application not found while resolving main activity')
+        # Iterate regardless of namespaces
+        for act in app.iter():
+            if not getattr(act, 'tag', '').endswith('activity'):
+                continue
+            has_main = False
+            has_launcher = False
+            for ifil in act.iter():
+                if not getattr(ifil, 'tag', '').endswith('intent-filter'):
+                    continue
+                for a in ifil.iter():
+                    if getattr(a, 'tag', '').endswith('action'):
+                        nm = a.get(android_ns + 'name', '') or a.get('name', '')
+                        if nm == 'android.intent.action.MAIN':
+                            has_main = True
+                    if getattr(a, 'tag', '').endswith('category'):
+                        nm = a.get(android_ns + 'name', '') or a.get('name', '')
+                        if nm == 'android.intent.category.LAUNCHER':
+                            has_launcher = True
+            if has_main and has_launcher:
+                name = act.get(android_ns + 'name', '') or act.get('name', '')
+                if not name:
+                    continue
+                if name.startswith('.'):
+                    return (package_name + name)
+                if '.' not in name and package_name:
+                    return package_name + '.' + name
+                return name
+    except Exception:
+        pass
+    # Fallback: regex scan
+    try:
+        with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
+            txt = f.read()
+        import re
+        pkg = _read_manifest_package(manifest_path) or ''
+        # crude: find first activity name
+        m = re.search(r'<activity[^>]*android:name="([^"]+)"', txt)
+        if m:
+            name = m.group(1)
+            if name.startswith('.'):
+                return pkg + name
+            if '.' not in name and pkg:
+                return pkg + '.' + name
+            return name
+    except Exception:
+        pass
+    return ''
+
+
+def _resolve_class_to_smali_path(smali_roots, class_name: str) -> str:
+    if not class_name:
+        return None
+    rel = os.path.join(*class_name.split('.')) + '.smali'
+    for root in smali_roots:
+        p = os.path.join(root, rel)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _inject_oncreate_load_gadget(smali_file: str):
+    try:
+        with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        # Try to find existing onCreate
+        start_idx = -1
+        end_idx = -1
+        locals_idx = -1
+        for i, line in enumerate(lines):
+            if line.strip().startswith('.method') and ' onCreate(' in line and ')V' in line:
+                start_idx = i
+                # find end of method
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip().startswith('.end method'):
+                        end_idx = j
+                        break
+                # find .locals inside method
+                for j in range(i + 1, end_idx if end_idx != -1 else len(lines)):
+                    if lines[j].strip().startswith('.locals'):
+                        locals_idx = j
+                        break
+                break
+        load_snippet = [
+            '    const-string v0, "frida-gadget"\n',
+            '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
+        ]
+        if start_idx != -1 and end_idx != -1:
+            # ensure .locals >= 1
+            if locals_idx != -1:
+                try:
+                    parts = lines[locals_idx].strip().split()
+                    n = int(parts[-1])
+                except Exception:
+                    n = 1
+                if n < 1:
+                    lines[locals_idx] = lines[locals_idx].replace(str(n), '1')
+            else:
+                lines.insert(start_idx + 1, '    .locals 1\n')
+            # insert before return-void (best-effort)
+            insert_at = end_idx
+            for k in range(end_idx - 1, start_idx, -1):
+                if lines[k].strip().startswith('return-void'):
+                    insert_at = k
+                    break
+            lines[insert_at:insert_at] = load_snippet
+            with open(smali_file, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            return True, 'patched existing onCreate'
+        else:
+            # add a new onCreate
+            new_method = (
+                '\n.method protected onCreate(Landroid/os/Bundle;)V\n'
+                '    .locals 1\n'
+                '    invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V\n'
+                '    const-string v0, "frida-gadget"\n'
+                '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
+                '    return-void\n'
+                '.end method\n'
+            )
+            lines.append(new_method)
+            with open(smali_file, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            return True, 'added new onCreate'
+    except Exception as e:
+        return False, f'smali injection failed: {e}'
+
+
+def _inject_application_oncreate(smali_file: str):
+    try:
+        with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        start_idx = -1
+        end_idx = -1
+        locals_idx = -1
+        for i, line in enumerate(lines):
+            if line.strip().startswith('.method') and ' onCreate(' in line and ')V' in line and 'static' not in line:
+                start_idx = i
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip().startswith('.end method'):
+                        end_idx = j
+                        break
+                for j in range(i + 1, end_idx if end_idx != -1 else len(lines)):
+                    if lines[j].strip().startswith('.locals'):
+                        locals_idx = j
+                        break
+                break
+        load_snippet = [
+            '    const-string v0, "frida-gadget"\n',
+            '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
+        ]
+        if start_idx != -1 and end_idx != -1:
+            if locals_idx != -1:
+                try:
+                    parts = lines[locals_idx].strip().split()
+                    n = int(parts[-1])
+                except Exception:
+                    n = 1
+                if n < 1:
+                    lines[locals_idx] = lines[locals_idx].replace(str(n), '1')
+            else:
+                lines.insert(start_idx + 1, '    .locals 1\n')
+            insert_at = end_idx
+            for k in range(end_idx - 1, start_idx, -1):
+                if lines[k].strip().startswith('return-void'):
+                    insert_at = k
+                    break
+            lines[insert_at:insert_at] = load_snippet
+            with open(smali_file, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            return True, 'patched Application.onCreate'
+        else:
+            new_method = (
+                '\n.method public onCreate()V\n'
+                '    .locals 1\n'
+                '    const-string v0, "frida-gadget"\n'
+                '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
+                '    invoke-super {p0}, Landroid/app/Application;->onCreate()V\n'
+                '    return-void\n'
+                '.end method\n'
+            )
+            lines.append(new_method)
+            with open(smali_file, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            return True, 'added Application.onCreate'
+    except Exception as e:
+        return False, f'application smali injection failed: {e}'
+
+
+def _inject_component_factory_instantiate(smali_file: str):
+    try:
+        with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        start_idx = -1
+        end_idx = -1
+        locals_idx = -1
+        sig = ' instantiateApplication(Ljava/lang/ClassLoader;Ljava/lang/String;)Landroid/app/Application;'
+        for i, line in enumerate(lines):
+            if line.strip().startswith('.method') and sig in line:
+                start_idx = i
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip().startswith('.end method'):
+                        end_idx = j
+                        break
+                for j in range(i + 1, end_idx if end_idx != -1 else len(lines)):
+                    if lines[j].strip().startswith('.locals'):
+                        locals_idx = j
+                        break
+                break
+        load_snippet = [
+            '    const-string v0, "frida-gadget"\n',
+            '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
+        ]
+        if start_idx != -1 and end_idx != -1:
+            if locals_idx != -1:
+                try:
+                    parts = lines[locals_idx].strip().split()
+                    n = int(parts[-1])
+                except Exception:
+                    n = 1
+                if n < 1:
+                    lines[locals_idx] = lines[locals_idx].replace(str(n), '1')
+            else:
+                lines.insert(start_idx + 1, '    .locals 1\n')
+            insert_at = start_idx + 1
+            lines[insert_at:insert_at] = load_snippet
+            with open(smali_file, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            return True, 'patched ComponentFactory.instantiateApplication'
+        else:
+            return False, 'instantiateApplication not found'
+    except Exception as e:
+        return False, f'component factory injection failed: {e}'
+
+
+def _fallback_activity_autoload(workdir: str, manifest_path: str):
+    try:
+        smali_roots = _list_smali_roots(workdir)
+        if not smali_roots:
+            return False, 'no smali roots found'
+        main_cls = _find_main_activity(manifest_path)
+        if not main_cls:
+            return False, 'main activity not found'
+        smali_path = _resolve_class_to_smali_path(smali_roots, main_cls)
+        if not smali_path:
+            return False, f'smali for {main_cls} not found'
+        ok, info = _inject_oncreate_load_gadget(smali_path)
+        return ok, f'{main_cls}: {info}'
+    except Exception as e:
+        return False, f'activity autoload failed: {e}'
+
+def _is_smali_class_final(smali_roots, class_name: str) -> bool:
+    try:
+        p = _resolve_class_to_smali_path(smali_roots, class_name)
+        if not p or not os.path.exists(p):
+            return False
+        with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                s = line.strip()
+                if s.startswith('.class'):
+                    # e.g., ".class public final Lcom/example/App;"
+                    parts = s.split()
+                    return 'final' in parts
+                if s and not s.startswith('.'):
+                    # stop early once class header passed
+                    break
+    except Exception:
+        pass
+    return False
+
+def _run_apktool_build(apktool_path: str, workdir: str, out_apk: str):
+    """Build APK with apktool. Try aapt2 first, then fall back to aapt1 if needed."""
+    def _cmd(use_aapt2: bool):
+        apktool_lower = apktool_path.lower()
+        base = ['java', '-jar', apktool_path, 'b', workdir, '-o', out_apk, '-f'] if apktool_lower.endswith('.jar') else [apktool_path, 'b', workdir, '-o', out_apk, '-f']
+        return base + (['--use-aapt2'] if use_aapt2 else [])
+
+    # Attempt with aapt2
+    cmd_aapt2 = _cmd(True)
+    result = subprocess.run(cmd_aapt2, capture_output=True, text=True, timeout=900)
+    if result.returncode == 0:
+        return
+
+    out = (result.stderr or '') + ("\n" + result.stdout if result.stdout else '')
+    log_to_fsr_logs(f"[GADGET][apktool] aapt2 build failed, will try aapt1 fallback: {out[:4000]}")
+
+    # Fallback to aapt1 (no --use-aapt2)
+    cmd_aapt1 = _cmd(False)
+    result2 = subprocess.run(cmd_aapt1, capture_output=True, text=True, timeout=900)
+    if result2.returncode != 0:
+        out2 = (result2.stderr or '') + ("\n" + result2.stdout if result2.stdout else '')
+        raise RuntimeError(out2 or out)
+
+
+def _run_apktool_decode(apktool_path: str, apk_path: str, out_dir: str):
+    apktool_lower = apktool_path.lower()
+    if apktool_lower.endswith('.jar'):
+        cmd = ['java', '-jar', apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r', '--use-aapt2']
+    elif apktool_lower.endswith(('.exe', '.bat')):
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r', '--use-aapt2']
+    else:
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r', '--use-aapt2']
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or result.stdout)
+
+
+@app.route('/api/gadget/inject', methods=['POST'])
+def api_gadget_inject():
+    try:
+        if 'apkFile' not in request.files:
+            return jsonify({'success': False, 'error': 'No APK file uploaded'}), 400
+
+        file = request.files['apkFile']
+        if not file.filename.endswith('.apk'):
+            return jsonify({'success': False, 'error': 'Only APK files are supported for gadget injection'}), 400
+
+        log_to_fsr_logs(f"[GADGET] Upload received: {file.filename}")
+
+        arch = (request.form.get('arch') or 'arm64-v8a').strip()
+        version = (request.form.get('version') or '').strip() or None
+        script_choice = (request.form.get('script_choice') or '').strip()
+        script_text = (request.form.get('script_text') or '').strip()
+        autoload_raw = (request.form.get('autoload') or '').strip().lower()
+        autoload = autoload_raw in ('1', 'true', 'on', 'yes')
+        use_objection = (request.form.get('use_objection') or '').strip().lower() in ('1', 'true', 'on', 'yes')
+
+        # Save upload
+        filename = secure_filename(file.filename)
+        upload_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(upload_path)
+        try:
+            fsize = os.path.getsize(upload_path)
+        except Exception:
+            fsize = -1
+        log_to_fsr_logs(f"[GADGET] Saved to {upload_path} (size={fsize} bytes)")
+
+        # Objection-based patching path (skips apktool rebuild)
+        if use_objection:
+            obj = shutil.which('objection')
+            if not obj:
+                return jsonify({'success': False, 'error': 'objection not found in PATH. Install with: pip install objection'}), 400
+
+            workdir = tempfile.mkdtemp(prefix='gadget_objection_')
+            @after_this_request
+            def _cleanup_objection(response):
+                try:
+                    if os.path.exists(upload_path):
+                        os.remove(upload_path)
+                except Exception:
+                    pass
+                try:
+                    shutil.rmtree(workdir, ignore_errors=True)
+                except Exception:
+                    pass
+                return response
+
+            # Build command
+            arch_map = {
+                'arm64-v8a': 'android-arm64',
+                'armeabi-v7a': 'android-arm',
+                'x86_64': 'android-x86_64',
+                'x86': 'android-x86'
+            }
+            args = [obj, 'patchapk', '--source', upload_path]
+            if version:
+                args += ['--gadget-version', version]
+            if arch in arch_map:
+                args += ['--gadget-archs', arch_map[arch]]
+
+            log_to_fsr_logs(f"[GADGET][OBJ] Running: {' '.join(args)}")
+            pr = subprocess.run(args, capture_output=True, text=True, timeout=1800)
+            if pr.returncode != 0:
+                # Retry without arch hint in case objection version doesn't support the flag
+                log_to_fsr_logs(f"[GADGET][OBJ] First attempt failed: {pr.stderr or pr.stdout}. Retrying without --gadget-archs")
+                args2 = [obj, 'patchapk', '--source', upload_path]
+                if version:
+                    args2 += ['--gadget-version', version]
+                pr2 = subprocess.run(args2, capture_output=True, text=True, timeout=1800)
+                if pr2.returncode != 0:
+                    return jsonify({'success': False, 'error': f'objection patchapk failed: {(pr2.stderr or pr2.stdout)[:8000]}'}), 500
+                output_text = (pr2.stdout or '') + ("\n" + pr2.stderr if pr2.stderr else '')
+            else:
+                output_text = (pr.stdout or '') + ("\n" + pr.stderr if pr.stderr else '')
+
+            # Try to find output APK path from objection output
+            patched_apk = None
+            try:
+                import re
+                m = re.search(r'Writing new APK file:\s*(.*\.apk)', output_text)
+                if m:
+                    candidate = m.group(1).strip()
+                    if os.path.exists(candidate):
+                        patched_apk = candidate
+            except Exception:
+                pass
+            if not patched_apk:
+                # Fallback: look for *.objection.apk next to upload
+                folder = os.path.dirname(upload_path)
+                for name in os.listdir(folder):
+                    if name.endswith('.apk') and (name.endswith('.objection.apk') or 'objection' in name.lower()):
+                        p = os.path.join(folder, name)
+                        patched_apk = p
+                        break
+            if not patched_apk or not os.path.exists(patched_apk):
+                return jsonify({'success': False, 'error': 'objection did not produce a patched APK. Check logs.'}), 500
+
+            log_to_fsr_logs(f"[GADGET][OBJ] Patched APK: {patched_apk}")
+
+            # Optionally embed our script + config into APK
+            lib_dir_name = arch  # e.g., arm64-v8a
+            # Prepare wrapped script content if provided
+            script_choice_content = None
+            if 'script_file' in request.files and request.files['script_file'] and request.files['script_file'].filename:
+                sf = request.files['script_file']
+                script_choice_content = sf.read().decode('utf-8', errors='ignore')
+            elif script_text:
+                script_choice_content = script_text
+            elif script_choice:
+                try:
+                    repo_script_path = os.path.join('scripts', script_choice)
+                    with open(repo_script_path, 'r', encoding='utf-8', errors='ignore') as rf:
+                        script_choice_content = rf.read()
+                except Exception:
+                    script_choice_content = None
+
+            wrapped_source = None
+            if script_choice_content:
+                try:
+                    wrapped_source = (
+                        "(function(){\n"
+                        "  var __src = " + json.dumps(script_choice_content) + ";\n"
+                        "  try {\n"
+                        "    Java.perform(function() {\n"
+                        "      try {\n"
+                        "        eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js');\n"
+                        "        try {\n"
+                        "          var Log = Java.use('android.util.Log');\n"
+                        "          var At = Java.use('android.app.ActivityThread');\n"
+                        "          var pkg = '';\n"
+                        "          try { pkg = At.currentPackageName(); } catch(e) {}\n"
+                        "          Log.i('FSR', 'Gadget script loaded' + (pkg ? ' pkg=' + pkg : ''));\n"
+                        "        } catch (e) {}\n"
+                        "      } catch (e) {\n"
+                        "        try {\n"
+                        "          var Log = Java.use('android.util.Log');\n"
+                        "          Log.e('FSR', 'Script error: ' + e);\n"
+                        "          Log.e('FSR', String(e.stack || e));\n"
+                        "        } catch (ie) {}\n"
+                        "        console.log('[FSR] Script error: ' + e + '\\n' + (e.stack||''));\n"
+                        "      }\n"
+                        "    });\n"
+                        "  } catch (e) {\n"
+                        "    try { eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js'); } catch (ee) {}\n"
+                        "  }\n"
+                        "})();\n"
+                    )
+                except Exception:
+                    wrapped_source = script_choice_content
+
+            # Update APK contents
+            import zipfile
+            new_apk_path = os.path.join(workdir, 'objection-updated.apk')
+            import zipfile
+            with zipfile.ZipFile(patched_apk, 'r') as zin, zipfile.ZipFile(new_apk_path, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    name = item.filename
+                    # Drop any existing gadget config or our script to avoid duplicates
+                    if name.endswith('/libfrida-gadget.config.so') or name.endswith('/libfsr-gadget-script.js.so'):
+                        continue
+                    data = zin.read(name)
+                    zout.writestr(item, data)
+                if wrapped_source:
+                    zout.writestr(f'lib/{lib_dir_name}/libfsr-gadget-script.js.so', wrapped_source)
+                    cfg = {
+                        'interaction': { 'type': 'script', 'path': 'libfsr-gadget-script.js.so' }
+                    }
+                    zout.writestr(f'lib/{lib_dir_name}/libfrida-gadget.config.so', json.dumps(cfg, indent=2))
+
+            # Align and sign
+            final_path = _fallback_align_and_sign(new_apk_path, workdir)
+            try:
+                fsz = os.path.getsize(final_path)
+            except Exception:
+                fsz = -1
+            log_to_fsr_logs(f"[GADGET][OBJ] Final APK: {final_path} (size={fsz} bytes)")
+            return send_file(final_path, as_attachment=True, download_name=os.path.basename(final_path), mimetype='application/vnd.android.package-archive')
+
+        # Ensure apktool is available in environment (classic path)
+        # Prefer a bundled tools/resources apktool jar if available
+        apktool_path = _find_apktool_from_resources()
+        if apktool_path:
+            log_to_fsr_logs(f"[GADGET] Using bundled apktool: {apktool_path}")
+        else:
+            try:
+                from sslpindetect import SSLPinDetector
+                detector_temp = SSLPinDetector()
+                apktool_path = detector_temp.apktool_path or detector_temp._find_apktool()
+            except Exception:
+                apktool_path = None
+
+        if not apktool_path or not os.path.exists(apktool_path):
+            # As a last resort, rely on system PATH
+            apktool_path = shutil.which('apktool')
+        if not apktool_path:
+            try:
+                if os.path.exists(upload_path):
+                    os.remove(upload_path)
+            except Exception:
+                pass
+            return jsonify({'success': False, 'error': 'Apktool not found in environment. Use the provided Docker image or install apktool on host.'}), 400
+        log_to_fsr_logs(f"[GADGET] Using apktool at: {apktool_path}")
+
+        # Working directory
+        workdir = tempfile.mkdtemp(prefix='gadget_inject_')
+        out_unsigned = os.path.join(workdir, 'gadget-injected-unsigned.apk')
+        out_aligned = os.path.join(workdir, 'gadget-injected-aligned.apk')
+
+        @after_this_request
+        def _cleanup_files(response):
+            try:
+                if os.path.exists(upload_path):
+                    os.remove(upload_path)
+            except Exception:
+                pass
+            try:
+                if os.path.isdir(workdir):
+                    shutil.rmtree(workdir, ignore_errors=True)
+            except Exception:
+                pass
+            return response
+
+        # Decompile APK (full decode to keep resources + proper text manifest)
+        try:
+            _run_apktool_decode_full(apktool_path, upload_path, workdir)
+        except Exception as e:
+            raise RuntimeError(f'decompile failed: {e}')
+        log_to_fsr_logs(f"[GADGET] Decompile OK -> {workdir}")
+
+        # Quick sanity on manifest to provide clearer guidance
+        manifest_path = _find_manifest_file(workdir)
+        if not os.path.exists(manifest_path):
+            raise RuntimeError('AndroidManifest.xml not found after decompile')
+        _debug_log_manifest(manifest_path)
+        is_split, details = _detect_split_apk(manifest_path)
+        if is_split:
+            raise RuntimeError(f'APK appears to be a split (no base Application/Launcher). Details: {details}. Please use a base/universal APK.')
+
+        # Resolve gadget: prefer local cache when a specific version is requested
+        lib_dir = os.path.join(workdir, 'lib', arch)
+        os.makedirs(lib_dir, exist_ok=True)
+        gadget_out = os.path.join(lib_dir, 'libfrida-gadget.so')
+        if version:
+            try:
+                cached = _ensure_cached_gadget(arch, version)
+                shutil.copyfile(cached, gadget_out)
+                log_to_fsr_logs(f"[GADGET] Using cached gadget {version} for {arch}")
+            except Exception as e:
+                raise RuntimeError(f'Failed to obtain cached gadget {version} {arch}: {e}')
+        else:
+            # Latest: fetch directly
+            gadget_url = get_frida_gadget_url(arch, version)
+            if not gadget_url:
+                raise RuntimeError(f'No frida-gadget asset found for arch {arch} version latest')
+            log_to_fsr_logs(f"[GADGET] Gadget target arch={arch} version=latest url={gadget_url}")
+            download_path = os.path.join(workdir, 'frida-gadget.so.xz')
+            log_to_fsr_logs(f"[GADGET] Downloading: {gadget_url}")
+            wget.download(gadget_url, download_path)
+            with lzma.open(download_path) as src, open(gadget_out, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+            if os.path.exists(download_path):
+                os.remove(download_path)
+        try:
+            gsize = os.path.getsize(gadget_out)
+        except Exception:
+            gsize = -1
+        log_to_fsr_logs(f"[GADGET] Saved gadget to {gadget_out} (size={gsize} bytes)")
+
+        # Script selection: precedence upload > paste > repo selection
+        chosen_script_content = None
+        if 'script_file' in request.files and request.files['script_file'] and request.files['script_file'].filename:
+            sf = request.files['script_file']
+            chosen_script_content = sf.read().decode('utf-8', errors='ignore')
+            log_to_fsr_logs(f"[GADGET] Script source: upload ({len(chosen_script_content)} bytes)")
+        elif script_text:
+            chosen_script_content = script_text
+            log_to_fsr_logs(f"[GADGET] Script source: pasted ({len(chosen_script_content)} bytes)")
+        elif script_choice:
+            try:
+                repo_script_path = os.path.join('scripts', script_choice)
+                with open(repo_script_path, 'r', encoding='utf-8', errors='ignore') as rf:
+                    chosen_script_content = rf.read()
+                log_to_fsr_logs(f"[GADGET] Script source: repo {script_choice} ({len(chosen_script_content)} bytes)")
+            except Exception:
+                chosen_script_content = None
+                log_to_fsr_logs(f"[GADGET] Script source: repo {script_choice} not found")
+
+        # If a script is chosen, place it next to gadget. Use .so suffix to ensure lib extraction on install.
+        script_relname = None
+        wrapped_source = None
+        if chosen_script_content:
+            # Wrap uploaded script so syntax/runtime errors are logged instead of aborting Gadget
+            try:
+                wrapped_source = (
+                    "(function(){\n"
+                    "  var __src = " + json.dumps(chosen_script_content) + ";\n"
+                    "  try {\n"
+                    "    Java.perform(function() {\n"
+                    "      try {\n"
+                    "        eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js');\n"
+                    "        try {\n"
+                    "          var Log = Java.use('android.util.Log');\n"
+                    "          var At = Java.use('android.app.ActivityThread');\n"
+                    "          var pkg = '';\n"
+                    "          try { pkg = At.currentPackageName(); } catch(e) {}\n"
+                    "          Log.i('FSR', 'Gadget script loaded' + (pkg ? ' pkg=' + pkg : ''));\n"
+                    "        } catch (e) {}\n"
+                    "      } catch (e) {\n"
+                    "        try {\n"
+                    "          var Log = Java.use('android.util.Log');\n"
+                    "          Log.e('FSR', 'Script error: ' + e);\n"
+                    "          Log.e('FSR', String(e.stack || e));\n"
+                    "        } catch (ie) {}\n"
+                    "        console.log('[FSR] Script error: ' + e + '\\n' + (e.stack||''));\n"
+                    "      }\n"
+                    "    });\n"
+                    "  } catch (e) {\n"
+                    "    try { eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js'); } catch (ee) {}\n"
+                    "  }\n"
+                    "})();\n"
+                )
+            except Exception:
+                wrapped_source = chosen_script_content
+
+            script_relname = 'libfsr-gadget-script.js.so'
+            script_abs = os.path.join(lib_dir, script_relname)
+            with open(script_abs, 'w', encoding='utf-8') as sf:
+                sf.write(wrapped_source if wrapped_source.endswith('\n') else wrapped_source + '\n')
+            log_to_fsr_logs(f"[GADGET] Wrote script to {script_abs}")
+
+        # Create Gadget config next to library (Android requires .config.so)
+        config_path = os.path.join(lib_dir, 'libfrida-gadget.config.so')
+        cfg = {}
+        if chosen_script_content:
+            # Wrap uploaded script so syntax/runtime errors are logged instead of aborting Gadget
+            try:
+                wrapped_source = (
+                    "(function(){\n"
+                    "  var __src = " + json.dumps(chosen_script_content) + ";\n"
+                    "  try {\n"
+                    "    Java.perform(function() {\n"
+                    "      try {\n"
+                    "        eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js');\n"
+                    "        try {\n"
+                    "          var Log = Java.use('android.util.Log');\n"
+                    "          var At = Java.use('android.app.ActivityThread');\n"
+                    "          var pkg = '';\n"
+                    "          try { pkg = At.currentPackageName(); } catch(e) {}\n"
+                    "          Log.i('FSR', 'Gadget script loaded' + (pkg ? ' pkg=' + pkg : ''));\n"
+                    "        } catch (e) {}\n"
+                    "      } catch (e) {\n"
+                    "        try {\n"
+                    "          var Log = Java.use('android.util.Log');\n"
+                    "          Log.e('FSR', 'Script error: ' + e);\n"
+                    "          Log.e('FSR', String(e.stack || e));\n"
+                    "        } catch (ie) {}\n"
+                    "        console.log('[FSR] Script error: ' + e + '\\n' + (e.stack||''));\n"
+                    "      }\n"
+                    "    });\n"
+                    "  } catch (e) {\n"
+                    "    try { eval(__src + '\\n//# sourceURL=fsr-uploaded-script.js'); } catch (ee) {}\n"
+                    "  }\n"
+                    "})();\n"
+                )
+            except Exception:
+                wrapped_source = chosen_script_content
+
+            # Use strict-compatible schema: put path on interaction (no top-level script)
+            cfg['interaction'] = {
+                'type': 'script',
+                'path': script_relname
+            }
+        else:
+            # Provide explicit listen defaults for reliability when no script is embedded
+            cfg['interaction'] = {
+                'type': 'listen',
+                'address': '127.0.0.1',
+                'port': 27042
+            }
+        with open(config_path, 'w', encoding='utf-8') as cf:
+            cf.write(json.dumps(cfg, indent=2))
+        log_to_fsr_logs(f"[GADGET] Wrote gadget config to {config_path} (mode={'script' if chosen_script_content else 'listen'})")
+
+        # Inject startup hook only if autoload requested
+        if autoload:
+            smali_dir = _determine_smali_dir(workdir)
+            if not smali_dir:
+                raise RuntimeError('Could not find smali directory in decompiled APK')
+
+            app_class = 'com.fsr.FSRApp'
+            manifest_ok = _modify_manifest_add_application(manifest_path, app_class)
+            if manifest_ok:
+                smali_ok = _write_application_smali(smali_dir, app_class)
+                if not smali_ok:
+                    raise RuntimeError('Failed to write Application smali')
+                log_to_fsr_logs("[GADGET] Autoload via new Application (no existing android:name)")
+            else:
+                # App already defines android:name – try chaining with wrapper Application
+                base_app = _get_manifest_application_name(manifest_path)
+                log_to_fsr_logs(f"[GADGET] Existing Application detected: {base_app or '(none)'}")
+                if base_app:
+                    # If base Application is final, do NOT subclass; try ComponentFactory or Provider
+                    is_final = _is_smali_class_final(_list_smali_roots(workdir), base_app)
+                    if is_final:
+                        log_to_fsr_logs(f"[GADGET] Base Application '{base_app}' is final; skipping wrapper and using alternatives")
+                        base_cf = _get_manifest_component_factory(manifest_path)
+                        cf_wrapper = 'com.fsr.AppCF'
+                        cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory')
+                        if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
+                            log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
+                        else:
+                            log_to_fsr_logs("[GADGET] ComponentFactory wrapper failed; trying provider/Activity fallbacks")
+                            package_name = _read_manifest_package(manifest_path) or 'com.fsr'
+                            provider_class = 'com.fsr.FSRInit'
+                            authorities = f"{package_name}.fsrinit"
+                            prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                            if not prov_smali_ok:
+                                raise RuntimeError('Failed to write ContentProvider smali')
+                            prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
+                            if not prov_manifest_ok:
+                                log_to_fsr_logs(f"[GADGET] Provider injection failed: {prov_info}. Trying activity fallback autoload")
+                                act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path)
+                                if not act_ok:
+                                    raise RuntimeError(f'Failed to inject ContentProvider into manifest: {prov_info}; Activity fallback failed: {act_info}')
+                                else:
+                                    log_to_fsr_logs(f"[GADGET] Activity autoload details: {act_info}")
+                            else:
+                                log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
+                    else:
+                        wrapper_class = 'com.fsr.AppWrapper'
+                        w_ok = _write_app_wrapper_smali(smali_dir, wrapper_class, base_app)
+                        if w_ok and _modify_manifest_set_application(manifest_path, wrapper_class):
+                            log_to_fsr_logs(f"[GADGET] Autoload via Application wrapper: {wrapper_class} extends {base_app}")
+                        else:
+                            log_to_fsr_logs("[GADGET] App wrapper failed; trying ComponentFactory wrapper")
+                            base_cf = _get_manifest_component_factory(manifest_path)
+                            cf_wrapper = 'com.fsr.AppCF'
+                            cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory')
+                            if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
+                                log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
+                            else:
+                                log_to_fsr_logs("[GADGET] ComponentFactory wrapper failed; trying provider/Activity fallbacks")
+                                package_name = _read_manifest_package(manifest_path) or 'com.fsr'
+                                provider_class = 'com.fsr.FSRInit'
+                                authorities = f"{package_name}.fsrinit"
+                                prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                                if not prov_smali_ok:
+                                    raise RuntimeError('Failed to write ContentProvider smali')
+                                prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
+                                if not prov_manifest_ok:
+                                    log_to_fsr_logs(f"[GADGET] Provider injection failed: {prov_info}. Trying activity fallback autoload")
+                                    act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path)
+                                    if not act_ok:
+                                        raise RuntimeError(f'Failed to inject ContentProvider into manifest: {prov_info}; Activity fallback failed: {act_info}')
+                                    else:
+                                        log_to_fsr_logs(f"[GADGET] Activity autoload details: {act_info}")
+                                else:
+                                    log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
+                else:
+                    # No android:name present; try ComponentFactory wrapper directly
+                    log_to_fsr_logs("[GADGET] No Application name; trying ComponentFactory wrapper first")
+                    base_cf = _get_manifest_component_factory(manifest_path)
+                    cf_wrapper = 'com.fsr.AppCF'
+                    cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory')
+                    if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
+                        log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
+                    else:
+                        # Fall back to provider/activity
+                        package_name = _read_manifest_package(manifest_path) or 'com.fsr'
+                        provider_class = 'com.fsr.FSRInit'
+                        authorities = f"{package_name}.fsrinit"
+                        prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                        if not prov_smali_ok:
+                            raise RuntimeError('Failed to write ContentProvider smali')
+                        prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
+                        if not prov_manifest_ok:
+                            log_to_fsr_logs(f"[GADGET] Provider injection failed: {prov_info}. Trying activity fallback autoload")
+                            act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path)
+                            if not act_ok:
+                                raise RuntimeError(f'Failed to inject ContentProvider into manifest: {prov_info}; Activity fallback failed: {act_info}')
+                            else:
+                                log_to_fsr_logs(f"[GADGET] Activity autoload details: {act_info}")
+                        else:
+                            log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
+
+            # As a final safety net, also patch MainActivity.onCreate to load the gadget
+            try:
+                ok, info = _fallback_activity_autoload(workdir, manifest_path)
+                log_to_fsr_logs(f"[GADGET] Additional activity autoload attempt: {info}")
+            except Exception as e:
+                log_to_fsr_logs(f"[GADGET] Additional activity autoload skipped: {e}")
+
+            # Best-effort: also register a ContentProvider autoload to increase reliability across OEMs/OS versions
+            try:
+                package_name = _read_manifest_package(manifest_path) or 'com.fsr'
+                provider_class = 'com.fsr.FSRInit'
+                authorities = f"{package_name}.fsrinit"
+                prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                if prov_smali_ok:
+                    prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
+                    log_to_fsr_logs(f"[GADGET] Additional provider autoload attempt: {prov_info}")
+            except Exception as e:
+                log_to_fsr_logs(f"[GADGET] Additional provider autoload skipped: {e}")
+
+        # As some apps include invalid resource file names (e.g., $avd_*), sanitize first
+        try:
+            _sanitize_aapt_invalid_resources(workdir)
+        except Exception as e:
+            log_to_fsr_logs(f"[GADGET] Resource sanitize skipped: {e}")
+
+        # Build unsigned APK
+        log_to_fsr_logs("[GADGET] Building APK (apktool b)...")
+        _run_apktool_build(apktool_path, workdir, out_unsigned)
+        log_to_fsr_logs(f"[GADGET] Build OK -> {out_unsigned}")
+
+        # Align + sign using Android build-tools (zipalign + apksigner)
+        signed_path = None
+        try:
+            log_to_fsr_logs('[GADGET] Aligning and signing APK using Android build-tools')
+            final_path = _fallback_align_and_sign(out_unsigned, workdir)
+            signed_path = final_path
+        except Exception as e:
+            log_to_fsr_logs(f"[GADGET] Align/sign failed: {e}")
+
+        # Fallback: return unsigned if signing still failed
+        final_path = signed_path or out_unsigned
+        dl_name = os.path.basename(final_path)
+        if not dl_name.endswith('.apk'):
+            dl_name += '.apk'
+        try:
+            fsz = os.path.getsize(final_path)
+        except Exception:
+            fsz = -1
+        log_to_fsr_logs(f"[GADGET] Final APK: {final_path} (size={fsz} bytes)")
+        # Sanity: ensure AndroidManifest.xml is compiled (binary), not text
+        try:
+            import zipfile
+            with zipfile.ZipFile(final_path, 'r') as zf:
+                with zf.open('AndroidManifest.xml') as mf:
+                    head = mf.read(16)
+                    if head.startswith(b'<?xml'):
+                        log_to_fsr_logs('[GADGET] Warning: Manifest appears to be text, not compiled binary XML. Install may fail.')
+        except Exception as _e:
+            log_to_fsr_logs(f"[GADGET] Manifest sanity check skipped: {_e}")
+        return send_file(final_path, as_attachment=True, download_name=dl_name, mimetype='application/vnd.android.package-archive')
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/scripts/list')
+def api_list_scripts():
+    try:
+        items = []
+        for name in os.listdir('scripts'):
+            p = os.path.join('scripts', name)
+            if os.path.isfile(p) and name.lower().endswith('.js'):
+                items.append(name)
+        items.sort()
+        return jsonify({'success': True, 'files': items})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'files': []}), 500
+
+
+def _find_build_tools_path():
+    try:
+        if os.name == 'nt':
+            base = os.path.expandvars(r"%LOCALAPPDATA%\\Android\\Sdk\\build-tools")
+            if os.path.isdir(base):
+                versions = sorted(os.listdir(base), reverse=True)
+                for v in versions:
+                    p = os.path.join(base, v)
+                    if os.path.isdir(p):
+                        return p
+        else:
+            for env in ['ANDROID_HOME', 'ANDROID_SDK_ROOT']:
+                root = os.environ.get(env)
+                if not root:
+                    continue
+                bt = os.path.join(root, 'build-tools')
+                if os.path.isdir(bt):
+                    versions = sorted(os.listdir(bt), reverse=True)
+                    for v in versions:
+                        p = os.path.join(bt, v)
+                        if os.path.isdir(p):
+                            return p
+    except Exception:
+        pass
+    return None
+
+
+def _find_exe(names):
+    for n in names:
+        p = shutil.which(n)
+        if p:
+            return p
+    return None
+
+
+def _fallback_align_and_sign(unsigned_apk: str, workdir: str) -> str:
+    bt = _find_build_tools_path()
+    zipalign = None
+    apksigner = None
+    if bt:
+        zipalign = os.path.join(bt, 'zipalign.exe' if os.name == 'nt' else 'zipalign')
+        apksigner = os.path.join(bt, 'apksigner.bat' if os.name == 'nt' else 'apksigner')
+    if not zipalign or not os.path.exists(zipalign):
+        zipalign = _find_exe(['zipalign'])
+    if not apksigner or not os.path.exists(apksigner):
+        apksigner = _find_exe(['apksigner'])
+
+    if not zipalign or not apksigner:
+        raise RuntimeError('zipalign/apksigner not found in Android SDK build-tools or PATH')
+
+    aligned = os.path.join(workdir, 'gadget-injected-aligned.apk')
+    try:
+        if os.path.exists(aligned):
+            os.remove(aligned)
+    except Exception:
+        pass
+    zr = subprocess.run([zipalign, '-v', '-p', '4', unsigned_apk, aligned], capture_output=True, text=True)
+    if zr.returncode != 0:
+        raise RuntimeError(f"zipalign failed: {zr.stderr or zr.stdout}")
+
+    # Generate debug keystore if missing
+    debug_keystore = os.path.join(workdir, 'debug.keystore')
+    if not os.path.exists(debug_keystore):
+        keytool = _find_exe(['keytool.exe', 'keytool'])
+        if not keytool:
+            raise RuntimeError('Java keytool not found to generate debug keystore')
+        subprocess.run([
+            keytool, '-genkey', '-v',
+            '-keystore', debug_keystore,
+            '-alias', 'androiddebugkey',
+            '-storepass', 'android',
+            '-keypass', 'android',
+            '-keyalg', 'RSA',
+            '-keysize', '2048',
+            '-validity', '10000',
+            '-dname', 'CN=Android Debug,O=Android,C=US'
+        ], check=True, capture_output=True, text=True)
+
+    signed = os.path.join(workdir, 'gadget-injected-signed.apk')
+    cmd = [
+        apksigner, 'sign',
+        '--min-sdk-version', '27',
+        '--ks', debug_keystore,
+        '--ks-pass', 'pass:android',
+        '--key-pass', 'pass:android',
+        '--ks-key-alias', 'androiddebugkey',
+        '--out', signed,
+        aligned
+    ]
+    sr = subprocess.run(cmd, capture_output=True, text=True)
+    if sr.returncode != 0:
+        raise RuntimeError(f"apksigner failed: {sr.stderr or sr.stdout}")
+    return signed
 
 def check_frida_versions():
     """Check Frida client and server versions for compatibility"""
@@ -783,55 +2849,138 @@ def mobile_proxy_ips():
 def apk_download():
     package_name = request.form.get('package')
     custom_name = request.form.get('custom_name', '').strip()
-    
+
     if not package_name:
         return "No package selected", 400
 
     try:
         os.makedirs('tmp', exist_ok=True)
-        
-        apk_paths = subprocess.check_output(
+
+        # Get all APK paths (base + splits) for the package
+        raw_output = subprocess.check_output(
             f"adb shell pm path {package_name}",
             shell=True,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             universal_newlines=True
         )
-        
-        if not apk_paths:
-            return "Failed to get APK path", 500
 
-        apk_path = apk_paths.strip().split('\n')[0].split(':')[1]
-        safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name) 
-        
+        lines = [ln.strip() for ln in (raw_output or '').split('\n') if ln.strip()]
+        apk_remote_paths = []
+        for ln in lines:
+            # Expected format: "package:/data/app/.../base.apk"
+            if ':' in ln:
+                path = ln.split(':', 1)[1].strip()
+                if path:
+                    apk_remote_paths.append(path)
+
+        if not apk_remote_paths:
+            return "Failed to get APK path(s)", 500
+
+        safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
+
+        # If only one APK (no split), keep previous single-APK behavior
+        if len(apk_remote_paths) == 1:
+            apk_path = apk_remote_paths[0]
+            # Determine filename
+            if custom_name:
+                base_name = re.sub(r'\.apk$', '', custom_name, flags=re.IGNORECASE)
+                apk_filename = f"{base_name}.apk"
+            else:
+                apk_filename = f"{safe_package}.apk"
+
+            local_apk = os.path.join('tmp', apk_filename)
+
+            pr = subprocess.run(
+                f"adb pull \"{apk_path}\" \"{local_apk}\"",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            if pr.returncode != 0:
+                return f"Failed to pull APK: {pr.stderr or pr.stdout}", 500
+            try:
+                if not os.path.exists(local_apk) or os.path.getsize(local_apk) == 0:
+                    return "Pulled APK is empty or missing", 500
+            except Exception:
+                pass
+
+            resp = send_file(
+                local_apk,
+                as_attachment=True,
+                download_name=apk_filename
+            )
+            def _cleanup_single():
+                try:
+                    if os.path.exists(local_apk):
+                        os.remove(local_apk)
+                except Exception:
+                    pass
+            try:
+                resp.call_on_close(_cleanup_single)
+            except Exception:
+                _cleanup_single()
+            return resp
+
+        # Otherwise, handle split APKs: pull all and zip them
+        timestamp = int(time.time())
+        work_dir = os.path.join('tmp', f"{safe_package}_{timestamp}")
+        os.makedirs(work_dir, exist_ok=True)
+
+        pulled_files = []
+        for remote in apk_remote_paths:
+            name = os.path.basename(remote) or 'unknown.apk'
+            local_path = os.path.join(work_dir, name)
+            pr = subprocess.run(
+                f"adb pull \"{remote}\" \"{local_path}\"",
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            if pr.returncode != 0 or not os.path.exists(local_path) or (os.path.exists(local_path) and os.path.getsize(local_path) == 0):
+                # Best-effort: clean up and report error
+                shutil.rmtree(work_dir, ignore_errors=True)
+                return f"Failed to pull split APK '{name}': {pr.stderr or pr.stdout}", 500
+            pulled_files.append(local_path)
+
+        # Create zip archive containing all APKs
         if custom_name:
-            custom_name = re.sub(r'\.apk$', '', custom_name, flags=re.IGNORECASE)
-            apk_filename = f"{custom_name}.apk"
+            zip_name_root = re.sub(r'\.(apk|zip)$', '', custom_name, flags=re.IGNORECASE)
         else:
-            apk_filename = f"{safe_package}.apk"
-            
-        temp_apk = os.path.join('tmp', apk_filename)
-        
-        pull_result = subprocess.run(
-            f"adb pull {apk_path} {temp_apk}",
-            shell=True,
-            capture_output=True,
-            text=True
-        )
+            zip_name_root = safe_package
 
-        if pull_result.returncode != 0:
-            return f"Failed to pull APK: {pull_result.stderr}", 500
+        zip_filename = f"{zip_name_root}.zip"
+        zip_path = os.path.join('tmp', zip_filename)
 
-        return send_file(
-            temp_apk,
+        import zipfile
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for f in pulled_files:
+                # Store files with their basename inside the archive
+                zf.write(f, arcname=os.path.basename(f))
+
+        resp = send_file(
+            zip_path,
             as_attachment=True,
-            download_name=apk_filename
+            download_name=zip_filename,
+            mimetype='application/zip'
         )
+        def _cleanup_zip():
+            try:
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+            except Exception:
+                pass
+            try:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            except Exception:
+                pass
+        try:
+            resp.call_on_close(_cleanup_zip)
+        except Exception:
+            _cleanup_zip()
+        return resp
 
     except Exception as e:
         return f"Error: {str(e)}", 500
-    finally:
-        if 'temp_apk' in locals() and os.path.exists(temp_apk):
-            os.remove(temp_apk)
             
 # install apk
 @app.route('/install-apk', methods=['POST'])
