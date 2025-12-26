@@ -1,0 +1,1773 @@
+{% extends "base.html" %}
+
+{% block title %}
+    <title>Frida Script Runner | ADB GUI</title>
+{% endblock %}
+
+{% block body %}
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/adb-gui.css') }}" class="rel">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <div class="adb-gui-container">
+        <div class="adb-header">
+            <div class="adb-header-content">
+                <img src="{{ url_for('static', filename='img/fsr_logo.png') }}" alt="FSR Logo" class="adb-logo">
+                <h1 class="adb-title">ADB GUI</h1>
+                <div class="adb-connect-form">
+                    <input type="text" id="adbIp" class="adb-input" placeholder="127.0.0.1" value="127.0.0.1">
+                    <input type="text" id="adbPort" class="adb-input" placeholder="5037" value="5037">
+                    <button id="connectBtn" class="adb-btn-connect">Connect</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="adb-tabs">
+            <!-- <button class="adb-tab" data-tab="devices">Device List</button> -->
+            <button class="adb-tab active" data-tab="packages">Packages</button>
+            <button class="adb-tab" data-tab="controller">Controller</button>
+            <button class="adb-tab" data-tab="processes">Process List</button>
+            <button class="adb-tab" data-tab="memory">App Memory Info</button>
+            <button class="adb-tab" data-tab="disk">Disk Space</button>
+        </div>
+
+        <div class="adb-main-content">
+            <div class="adb-left-panel">
+                <div class="adb-section">
+                    <div class="adb-section-header">
+                        <span>Device List</span>
+                        <span class="adb-badge" id="deviceCount">0</span>
+                    </div>
+                    <div class="adb-device-list" id="deviceList">
+                        <div class="adb-loading">Loading devices...</div>
+                    </div>
+                </div>
+
+                <div class="adb-section">
+                    <div class="adb-section-header">Device Info.</div>
+                    <div class="adb-device-info" id="deviceInfo">
+                        <div class="adb-info-row">
+                            <span class="adb-info-label">STATE:</span>
+                            <span class="adb-info-value" id="infoState">-</span>
+                        </div>
+                        <div class="adb-info-row">
+                            <span class="adb-info-label">USB:</span>
+                            <span class="adb-info-value" id="infoUsb">-</span>
+                        </div>
+                        <div class="adb-info-row">
+                            <span class="adb-info-label">PRODUCT:</span>
+                            <span class="adb-info-value" id="infoProduct">-</span>
+                        </div>
+                        <div class="adb-info-row">
+                            <span class="adb-info-label">DEVICE:</span>
+                            <span class="adb-info-value" id="infoDevice">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adb-section">
+                    <div class="adb-section-header">Log Message.</div>
+                    <div class="adb-log-message" id="logMessage">
+                        <div>Ready</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="adb-right-panel">
+                <div class="adb-tab-content active" id="packagesTab">
+                    <div class="adb-packages-header">
+                        <button class="adb-btn-install" id="installPackageBtn">Install Package</button>
+                        <input type="text" id="packageSearch" class="adb-search-input" placeholder="Search packages">
+                    </div>
+                    <div class="adb-packages-table-container">
+                        <table class="adb-packages-table">
+                            <thead>
+                                <tr>
+                                    <th>PACKAGE</th>
+                                    <th>ACTIONS</th>
+                                    <th>UNINSTALL</th>
+                                    <th>FORCE STOP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="packagesTableBody">
+                                <tr>
+                                    <td colspan="4" class="adb-loading">Loading packages...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="adb-pagination-container">
+                        <div class="adb-pagination-info">
+                            <span id="paginationInfo">Showing 0 - 0 of 0 packages</span>
+                        </div>
+                        <div class="adb-pagination-controls">
+                            <button class="adb-pagination-btn" id="firstPageBtn" disabled>
+                                <i class="bi bi-chevron-double-left"></i>
+                            </button>
+                            <button class="adb-pagination-btn" id="prevPageBtn" disabled>
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <span class="adb-pagination-page">
+                                Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                            </span>
+                            <button class="adb-pagination-btn" id="nextPageBtn" disabled>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                            <button class="adb-pagination-btn" id="lastPageBtn" disabled>
+                                <i class="bi bi-chevron-double-right"></i>
+                            </button>
+                        </div>
+                        <div class="adb-pagination-size">
+                            <label for="itemsPerPage">Items per page:</label>
+                            <select id="itemsPerPage" class="adb-pagination-select">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adb-tab-content" id="devicesTab">
+                    <div class="adb-tab-placeholder">
+                        <h3>Device List</h3>
+                        <p>Device list information will be displayed here</p>
+                    </div>
+                </div>
+
+                <div class="adb-tab-content" id="controllerTab">
+                    <div class="adb-controller-header">
+                        <h3>Device Controller</h3>
+                        <div class="adb-screen-info" id="screenInfo">Screen: Loading...</div>
+                    </div>
+                    <div class="adb-controller-content">
+                        <div class="adb-controller-left">
+                            <div class="adb-controller-section">
+                                <h4>Touch Pad</h4>
+                                <div class="adb-touch-pad" id="touchPad">
+                                    <div class="adb-touch-indicator" id="touchIndicator"></div>
+                                </div>
+                                <div class="adb-coords-display">
+                                    <span>X: <span id="touchX">0</span></span>
+                                    <span>Y: <span id="touchY">0</span></span>
+                                </div>
+                            </div>
+                            <div class="adb-controller-section">
+                                <h4>Quick Actions</h4>
+                                <div class="adb-quick-actions">
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_HOME')">
+                                        <i class="bi bi-house"></i> Home
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_BACK')">
+                                        <i class="bi bi-arrow-left"></i> Back
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_MENU')">
+                                        <i class="bi bi-list"></i> Menu
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_APP_SWITCH')">
+                                        <i class="bi bi-grid"></i> Recent
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_POWER')">
+                                        <i class="bi bi-power"></i> Power
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_VOLUME_UP')">
+                                        <i class="bi bi-volume-up"></i> Vol+
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_VOLUME_DOWN')">
+                                        <i class="bi bi-volume-down"></i> Vol-
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_VOLUME_MUTE')">
+                                        <i class="bi bi-volume-mute"></i> Mute
+                                    </button>
+                                    <button class="adb-quick-btn" onclick="sendKeyEvent('KEYCODE_WAKEUP')">
+                                        <i class="bi bi-brightness-high"></i> Wake
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="adb-controller-right">
+                            <div class="adb-controller-section">
+                                <h4>Text Input</h4>
+                                <div class="adb-text-input-group">
+                                    <input type="text" id="textInput" class="adb-form-input" placeholder="Enter text to send">
+                                    <button class="adb-btn-primary" onclick="sendTextInput()">Send</button>
+                                </div>
+                            </div>
+                            <div class="adb-controller-section">
+                                <h4>Swipe Gestures</h4>
+                                <div class="adb-swipe-buttons">
+                                    <button class="adb-swipe-btn" onclick="quickSwipe('up')">
+                                        <i class="bi bi-arrow-up"></i> Swipe Up
+                                    </button>
+                                    <button class="adb-swipe-btn" onclick="quickSwipe('down')">
+                                        <i class="bi bi-arrow-down"></i> Swipe Down
+                                    </button>
+                                    <button class="adb-swipe-btn" onclick="quickSwipe('left')">
+                                        <i class="bi bi-arrow-left"></i> Swipe Left
+                                    </button>
+                                    <button class="adb-swipe-btn" onclick="quickSwipe('right')">
+                                        <i class="bi bi-arrow-right"></i> Swipe Right
+                                    </button>
+                                </div>
+                                <div class="adb-custom-swipe">
+                                    <h5 style="margin: 15px 0 10px 0; font-size: 14px;">Custom Swipe</h5>
+                                    <div class="adb-swipe-coords">
+                                        <div>
+                                            <label>From:</label>
+                                            <input type="number" id="swipeX1" class="adb-coord-input" placeholder="X1" value="100">
+                                            <input type="number" id="swipeY1" class="adb-coord-input" placeholder="Y1" value="500">
+                                        </div>
+                                        <div>
+                                            <label>To:</label>
+                                            <input type="number" id="swipeX2" class="adb-coord-input" placeholder="X2" value="100">
+                                            <input type="number" id="swipeY2" class="adb-coord-input" placeholder="Y2" value="200">
+                                        </div>
+                                        <button class="adb-btn-primary" onclick="sendCustomSwipe()" style="margin-top: 10px;">Swipe</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adb-tab-content" id="processesTab">
+                    <div class="adb-processes-header">
+                        <h3>Running Processes</h3>
+                        <input type="text" id="processSearch" class="adb-search-input" placeholder="Search processes">
+                    </div>
+                    <div class="adb-processes-table-container">
+                        <table class="adb-packages-table">
+                            <thead>
+                                <tr>
+                                    <th>USER</th>
+                                    <th>PID</th>
+                                    <th>PPID</th>
+                                    <th>NAME</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processesTableBody">
+                                <tr>
+                                    <td colspan="4" class="adb-loading">Loading processes...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="adb-pagination-container" id="processPagination">
+                        <div class="adb-pagination-info">
+                            <span id="processPaginationInfo">Showing 0 - 0 of 0 processes</span>
+                        </div>
+                        <div class="adb-pagination-controls">
+                            <button class="adb-pagination-btn" id="processFirstPageBtn" disabled>
+                                <i class="bi bi-chevron-double-left"></i>
+                            </button>
+                            <button class="adb-pagination-btn" id="processPrevPageBtn" disabled>
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <span class="adb-pagination-page">
+                                Page <span id="processCurrentPage">1</span> of <span id="processTotalPages">1</span>
+                            </span>
+                            <button class="adb-pagination-btn" id="processNextPageBtn" disabled>
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                            <button class="adb-pagination-btn" id="processLastPageBtn" disabled>
+                                <i class="bi bi-chevron-double-right"></i>
+                            </button>
+                        </div>
+                        <div class="adb-pagination-size">
+                            <label for="processItemsPerPage">Items per page:</label>
+                            <select id="processItemsPerPage" class="adb-pagination-select">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adb-tab-content" id="memoryTab">
+                    <div class="adb-memory-header">
+                        <h3>System Memory Info</h3>
+                        <button class="adb-btn-refresh" onclick="loadMemoryInfo()" title="Refresh">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="adb-memory-content">
+                        <div class="adb-memory-charts-container">
+                            <div class="adb-memory-chart-wrapper">
+                                <h4>Memory Distribution</h4>
+                                <div class="adb-memory-chart-container">
+                                    <canvas id="memoryPieChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="adb-memory-chart-wrapper">
+                                <h4>Memory Usage Over Time</h4>
+                                <div class="adb-memory-chart-container">
+                                    <canvas id="memoryLineChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="adb-memory-table-container">
+                            <table class="adb-packages-table">
+                                <thead>
+                                    <tr>
+                                        <th>MEMORY TYPE</th>
+                                        <th>VALUE (kB)</th>
+                                        <th>VALUE (MB)</th>
+                                        <th>PERCENTAGE</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="memoryTableBody">
+                                    <tr>
+                                        <td colspan="4" class="adb-loading">Loading memory information...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="adb-tab-content" id="diskTab">
+                    <div class="adb-disk-header">
+                        <h3>Disk Space</h3>
+                        <button class="adb-btn-refresh" onclick="loadDiskSpace()" title="Refresh">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="adb-disk-content">
+                        <div class="adb-disk-chart-container">
+                            <canvas id="diskPieChart"></canvas>
+                        </div>
+                        <div class="adb-disk-table-container">
+                            <table class="adb-packages-table">
+                                <thead>
+                                    <tr>
+                                        <th>FILESYSTEM</th>
+                                        <th>MOUNTED ON</th>
+                                        <th>SIZE</th>
+                                        <th>USED</th>
+                                        <th>AVAILABLE</th>
+                                        <th>USE %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="diskTableBody">
+                                    <tr>
+                                        <td colspan="6" class="adb-loading">Loading disk space...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="adb-modal" id="installModal">
+        <div class="adb-modal-content">
+            <div class="adb-modal-header">
+                <h3>Install Package</h3>
+                <button class="adb-modal-close" id="closeInstallModal">&times;</button>
+            </div>
+            <div class="adb-modal-body">
+                <div class="adb-form-group">
+                    <label for="apkPath">APK Path:</label>
+                    <input type="text" id="apkPath" class="adb-form-input" placeholder="/path/to/app.apk">
+                </div>
+            </div>
+            <div class="adb-modal-footer">
+                <button class="adb-btn-primary" id="confirmInstallBtn">Install</button>
+                <button class="adb-btn-secondary" id="cancelInstallBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSerial = null;
+        let allPackages = [];
+        let filteredPackages = [];
+        let currentPage = 1;
+        let itemsPerPage = 50;
+        
+        let allProcesses = [];
+        let filteredProcesses = [];
+        let currentProcessPage = 1;
+        let processItemsPerPage = 50;
+
+        document.querySelectorAll('.adb-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.dataset.tab;
+                
+                document.querySelectorAll('.adb-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                document.querySelectorAll('.adb-tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                const targetContent = document.getElementById(tabName + 'Tab');
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+                
+                if (tabName === 'packages') {
+                    loadPackages();
+                } else if (tabName === 'controller') {
+                    loadController();
+                } else if (tabName === 'processes') {
+                    loadProcesses();
+                } else if (tabName === 'memory') {
+                    loadMemoryInfo();
+                } else if (tabName === 'disk') {
+                    loadDiskSpace();
+                }
+            });
+        });
+
+        document.getElementById('connectBtn').addEventListener('click', function() {
+            const ip = document.getElementById('adbIp').value.trim();
+            const port = document.getElementById('adbPort').value.trim();
+            
+            if (!ip || !port) {
+                addLog('Please enter IP and Port');
+                return;
+            }
+            
+            addLog('Connecting...');
+            fetch('/adb-gui/connect', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ip: ip, port: port})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog('Connected successfully');
+                    loadDevices();
+                } else {
+                    addLog('Connection failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                addLog('Error: ' + err);
+            });
+        });
+
+        function loadDevices() {
+            const deviceList = document.getElementById('deviceList');
+            deviceList.innerHTML = '<div class="adb-loading">Loading devices...</div>';
+            
+            fetch('/adb-gui/devices')
+                .then(res => res.json())
+                .then(data => {
+                    const deviceList = document.getElementById('deviceList');
+                    const deviceCount = document.getElementById('deviceCount');
+                    
+                    if (data.success) {
+                        deviceCount.textContent = data.devices.length;
+                        
+                        // Filter only devices with state "device" (actually connected)
+                        const connectedDevices = data.devices.filter(d => d.state === 'device');
+                        
+                        if (data.devices.length === 0) {
+                            deviceList.innerHTML = '<div class="adb-no-devices">No devices found</div>';
+                            return;
+                        }
+                        
+                        deviceList.innerHTML = '';
+                        data.devices.forEach(device => {
+                            const deviceBtn = document.createElement('button');
+                            deviceBtn.className = 'adb-device-btn';
+                            const deviceName = device.product || device.model || device.serial || 'Device';
+                            
+                            // Add state indicator
+                            let stateIndicator = '';
+                            if (device.state === 'device') {
+                                stateIndicator = ' ✓';
+                                deviceBtn.style.background = '#28a745';
+                            } else if (device.state === 'offline') {
+                                stateIndicator = ' ⚠';
+                                deviceBtn.style.background = '#ffc107';
+                            } else if (device.state === 'unauthorized') {
+                                stateIndicator = ' ✗';
+                                deviceBtn.style.background = '#dc3545';
+                            } else {
+                                stateIndicator = ' ?';
+                                deviceBtn.style.background = '#6c757d';
+                            }
+                            
+                            deviceBtn.textContent = `${deviceName} (${device.serial})${stateIndicator}`;
+                            deviceBtn.onclick = () => {
+                                if (device.state === 'device') {
+                                    selectDevice(device.serial);
+                                } else {
+                                    addLog(`Device ${device.serial} is ${device.state}. Please connect device properly.`);
+                                }
+                            };
+                            deviceList.appendChild(deviceBtn);
+                        });
+                        
+                        // Don't auto-select - let user choose manually
+                        // This prevents timeout issues when device is not fully responsive
+                        if (connectedDevices.length > 0) {
+                            addLog(`Found ${connectedDevices.length} connected device(s). Click to select.`);
+                        } else if (data.devices.length > 0) {
+                            addLog('No devices in "device" state. Please check device connection.');
+                        }
+                    } else {
+                        deviceList.innerHTML = '<div class="adb-no-devices">Failed to load devices</div>';
+                        addLog('Failed to load devices: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(err => {
+                    const deviceList = document.getElementById('deviceList');
+                    deviceList.innerHTML = '<div class="adb-no-devices">Error loading devices</div>';
+                    addLog('Error loading devices: ' + err);
+                });
+        }
+
+        function selectDevice(serial) {
+            if (!serial) {
+                addLog('No device selected');
+                return;
+            }
+            
+            currentSerial = serial;
+            addLog('Selected device: ' + serial);
+            
+            // Show loading state
+            document.getElementById('infoState').textContent = 'Loading...';
+            document.getElementById('infoUsb').textContent = 'Loading...';
+            document.getElementById('infoProduct').textContent = 'Loading...';
+            document.getElementById('infoDevice').textContent = 'Loading...';
+            
+            // Check if device is responsive first
+            checkDeviceAndLoad(serial);
+        }
+
+        function checkDeviceAndLoad(serial) {
+            // Quick check if device is responsive before loading heavy data
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Check timeout')), 3000)
+            );
+            
+            Promise.race([
+                fetch(`/adb-gui/check-responsive?serial=${encodeURIComponent(serial)}`),
+                timeoutPromise
+            ])
+                .then(res => res.json())
+                .then(data => {
+                    if (data.responsive) {
+                        // Device is responsive, load data
+                        loadDeviceInfo(serial);
+                        loadPackages();
+                    } else {
+                        // Device not responsive
+                        document.getElementById('infoState').textContent = '-';
+                        document.getElementById('infoUsb').textContent = '-';
+                        document.getElementById('infoProduct').textContent = '-';
+                        document.getElementById('infoDevice').textContent = '-';
+                        addLog('Device is not responsive. Please check connection.');
+                        
+                        // Show error in packages table
+                        document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4">Device not responsive. Please check connection.</td></tr>';
+                        filteredPackages = [];
+                        updatePagination();
+                    }
+                })
+                .catch(err => {
+                    console.error('Error checking device:', err);
+                    // If check fails, try to load anyway but with shorter timeout
+                    addLog('Quick check failed, trying to load device info...');
+                    loadDeviceInfo(serial);
+                    loadPackages();
+                });
+        }
+
+        function loadDeviceInfo(serial) {
+            if (!serial) return;
+            
+            fetch(`/adb-gui/device-info?serial=${encodeURIComponent(serial)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.info) {
+                        document.getElementById('infoState').textContent = data.info.STATE || '-';
+                        document.getElementById('infoUsb').textContent = data.info.USB || '-';
+                        document.getElementById('infoProduct').textContent = data.info.PRODUCT || '-';
+                        document.getElementById('infoDevice').textContent = data.info.DEVICE || '-';
+                    } else {
+                        document.getElementById('infoState').textContent = '-';
+                        document.getElementById('infoUsb').textContent = '-';
+                        document.getElementById('infoProduct').textContent = '-';
+                        document.getElementById('infoDevice').textContent = '-';
+                        if (data.error) {
+                            addLog('Device info error: ' + data.error);
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading device info:', err);
+                    document.getElementById('infoState').textContent = '-';
+                    document.getElementById('infoUsb').textContent = '-';
+                    document.getElementById('infoProduct').textContent = '-';
+                    document.getElementById('infoDevice').textContent = '-';
+                    addLog('Failed to load device info');
+                });
+        }
+
+        function loadPackages() {
+            if (!currentSerial) {
+                document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4">Please select a device first</td></tr>';
+                filteredPackages = [];
+                updatePagination();
+                return;
+            }
+            
+            // Show loading state
+            document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4" class="adb-loading">Loading packages...</td></tr>';
+            
+            addLog('Load packages');
+            
+            // Add timeout to prevent hanging (reduced from 8s to 5s)
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Request timeout')), 5000)
+            );
+            
+            Promise.race([
+                fetch(`/adb-gui/packages?serial=${encodeURIComponent(currentSerial)}`),
+                timeoutPromise
+            ])
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        allPackages = data.packages;
+                        filteredPackages = data.packages;
+                        renderPackages(data.packages);
+                        addLog('Done');
+                    } else {
+                        addLog('Failed to load packages: ' + (data.error || 'Unknown error'));
+                        document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4">Failed to load packages. Device may not be connected.</td></tr>';
+                        filteredPackages = [];
+                        updatePagination();
+                    }
+                })
+                .catch(err => {
+                    addLog('Error loading packages: ' + (err.message || err));
+                    document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4">Error loading packages. Please check device connection.</td></tr>';
+                    filteredPackages = [];
+                    updatePagination();
+                });
+        }
+
+        function renderPackages(packages) {
+            filteredPackages = packages;
+            currentPage = 1;
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const totalItems = filteredPackages.length;
+            const totalPages = Math.ceil(totalItems / itemsPerPage);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+            const currentPagePackages = filteredPackages.slice(startIndex, endIndex);
+
+            const tbody = document.getElementById('packagesTableBody');
+            tbody.innerHTML = '';
+            
+            if (currentPagePackages.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No packages found</td></tr>';
+            } else {
+                currentPagePackages.forEach(pkg => {
+                    const row = document.createElement('tr');
+                    const escapedPkg = pkg.replace(/'/g, "\\'");
+                    row.innerHTML = `
+                        <td class="adb-package-name">${pkg}</td>
+                        <td>
+                            <button class="adb-btn-clear" onclick="clearPackageData('${escapedPkg}')" title="Clear Data">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </td>
+                        <td>
+                            <button class="adb-btn-uninstall" onclick="uninstallPackage('${escapedPkg}')" title="Uninstall">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                        <td>
+                            <button class="adb-btn-force-stop" onclick="forceStopPackage('${escapedPkg}')" title="Force Stop">
+                                <i class="bi bi-pause-circle"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            document.getElementById('paginationInfo').textContent = 
+                `Showing ${startIndex + 1} - ${endIndex} of ${totalItems} packages`;
+            document.getElementById('currentPage').textContent = currentPage;
+            document.getElementById('totalPages').textContent = totalPages || 1;
+
+            document.getElementById('firstPageBtn').disabled = currentPage === 1;
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages || totalPages === 0;
+            document.getElementById('lastPageBtn').disabled = currentPage >= totalPages || totalPages === 0;
+        }
+
+        function goToFirstPage() {
+            currentPage = 1;
+            updatePagination();
+        }
+
+        function goToPrevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                updatePagination();
+            }
+        }
+
+        function goToNextPage() {
+            const totalPages = Math.ceil(filteredPackages.length / itemsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                updatePagination();
+            }
+        }
+
+        function goToLastPage() {
+            const totalPages = Math.ceil(filteredPackages.length / itemsPerPage);
+            currentPage = totalPages || 1;
+            updatePagination();
+        }
+
+        function clearPackageData(packageName) {
+            if (!confirm(`Clear data for ${packageName}?`)) return;
+            
+            fetch('/adb-gui/package/clear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({package: packageName, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(data.message || 'Data cleared');
+                } else {
+                    addLog('Failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                addLog('Error: ' + err);
+            });
+        }
+
+        function uninstallPackage(packageName) {
+            if (!confirm(`Uninstall ${packageName}?`)) return;
+            
+            fetch('/adb-gui/package/uninstall', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({package: packageName, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(data.message || 'Package uninstalled');
+                    loadPackages();
+                } else {
+                    addLog('Failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                addLog('Error: ' + err);
+            });
+        }
+
+        function forceStopPackage(packageName) {
+            fetch('/adb-gui/package/force-stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({package: packageName, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(data.message || 'Package force stopped');
+                } else {
+                    addLog('Failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                addLog('Error: ' + err);
+            });
+        }
+        document.getElementById('installPackageBtn').addEventListener('click', function() {
+            document.getElementById('installModal').style.display = 'flex';
+        });
+
+        document.getElementById('closeInstallModal').addEventListener('click', function() {
+            document.getElementById('installModal').style.display = 'none';
+        });
+
+        document.getElementById('cancelInstallBtn').addEventListener('click', function() {
+            document.getElementById('installModal').style.display = 'none';
+        });
+
+        document.getElementById('confirmInstallBtn').addEventListener('click', function() {
+            const apkPath = document.getElementById('apkPath').value.trim();
+            if (!apkPath) {
+                alert('Please enter APK path');
+                return;
+            }
+            
+            fetch('/adb-gui/package/install', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({apk_path: apkPath, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(data.message || 'Package installed');
+                    document.getElementById('installModal').style.display = 'none';
+                    document.getElementById('apkPath').value = '';
+                    loadPackages();
+                } else {
+                    addLog('Failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                addLog('Error: ' + err);
+            });
+        });
+
+        document.getElementById('packageSearch').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            if (searchTerm === '') {
+                filteredPackages = allPackages;
+            } else {
+                filteredPackages = allPackages.filter(pkg => pkg.toLowerCase().includes(searchTerm));
+            }
+            currentPage = 1;    
+            updatePagination();
+        });
+
+        document.getElementById('firstPageBtn').addEventListener('click', goToFirstPage);
+        document.getElementById('prevPageBtn').addEventListener('click', goToPrevPage);
+        document.getElementById('nextPageBtn').addEventListener('click', goToNextPage);
+        document.getElementById('lastPageBtn').addEventListener('click', goToLastPage);
+
+        document.getElementById('itemsPerPage').addEventListener('change', function(e) {
+            itemsPerPage = parseInt(e.target.value);
+            currentPage = 1;
+            updatePagination();
+        });
+
+        document.getElementById('processFirstPageBtn').addEventListener('click', goToProcessFirstPage);
+        document.getElementById('processPrevPageBtn').addEventListener('click', goToProcessPrevPage);
+        document.getElementById('processNextPageBtn').addEventListener('click', goToProcessNextPage);
+        document.getElementById('processLastPageBtn').addEventListener('click', goToProcessLastPage);
+
+        document.getElementById('processItemsPerPage').addEventListener('change', function(e) {
+            processItemsPerPage = parseInt(e.target.value);
+            currentProcessPage = 1;
+            updateProcessPagination();
+        });
+
+        document.getElementById('processSearch').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            if (searchTerm === '') {
+                filteredProcesses = allProcesses;
+            } else {
+                filteredProcesses = allProcesses.filter(process => {
+                    const user = (process.USER || '').toLowerCase();
+                    const pid = (process.PID || '').toLowerCase();
+                    const ppid = (process.PPID || '').toLowerCase();
+                    const name = (process.NAME || '').toLowerCase();
+                    return user.includes(searchTerm) || pid.includes(searchTerm) || 
+                           ppid.includes(searchTerm) || name.includes(searchTerm);
+                });
+            }
+            currentProcessPage = 1;
+            updateProcessPagination();
+        });
+
+        function loadProcesses() {
+            if (!currentSerial) {
+                document.getElementById('processesTableBody').innerHTML = '<tr><td colspan="4">Please select a device first</td></tr>';
+                allProcesses = [];
+                filteredProcesses = [];
+                updateProcessPagination();
+                return;
+            }
+            
+            document.getElementById('processesTableBody').innerHTML = '<tr><td colspan="4" class="adb-loading">Loading processes...</td></tr>';
+            
+            fetch(`/adb-gui/processes?serial=${encodeURIComponent(currentSerial)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        allProcesses = data.processes || [];
+                        filteredProcesses = allProcesses;
+                        renderProcesses(allProcesses);
+                    } else {
+                        document.getElementById('processesTableBody').innerHTML = '<tr><td colspan="4">Failed to load processes</td></tr>';
+                        allProcesses = [];
+                        filteredProcesses = [];
+                        updateProcessPagination();
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading processes:', err);
+                    document.getElementById('processesTableBody').innerHTML = '<tr><td colspan="4">Error loading processes</td></tr>';
+                    allProcesses = [];
+                    filteredProcesses = [];
+                    updateProcessPagination();
+                });
+        }
+
+        function renderProcesses(processes) {
+            filteredProcesses = processes;
+            currentProcessPage = 1;
+            updateProcessPagination();
+        }
+
+        function updateProcessPagination() {
+            const totalItems = filteredProcesses.length;
+            const totalPages = Math.ceil(totalItems / processItemsPerPage);
+            const startIndex = (currentProcessPage - 1) * processItemsPerPage;
+            const endIndex = Math.min(startIndex + processItemsPerPage, totalItems);
+            const currentPageProcesses = filteredProcesses.slice(startIndex, endIndex);
+
+            const tbody = document.getElementById('processesTableBody');
+            tbody.innerHTML = '';
+            
+            if (currentPageProcesses.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No processes found</td></tr>';
+            } else {
+                currentPageProcesses.forEach(process => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${process.USER || '-'}</td>
+                        <td>${process.PID || '-'}</td>
+                        <td>${process.PPID || '-'}</td>
+                        <td class="adb-package-name">${process.NAME || '-'}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            document.getElementById('processPaginationInfo').textContent = 
+                `Showing ${startIndex + 1} - ${endIndex} of ${totalItems} processes`;
+            document.getElementById('processCurrentPage').textContent = currentProcessPage;
+            document.getElementById('processTotalPages').textContent = totalPages || 1;
+
+            document.getElementById('processFirstPageBtn').disabled = currentProcessPage === 1;
+            document.getElementById('processPrevPageBtn').disabled = currentProcessPage === 1;
+            document.getElementById('processNextPageBtn').disabled = currentProcessPage >= totalPages || totalPages === 0;
+            document.getElementById('processLastPageBtn').disabled = currentProcessPage >= totalPages || totalPages === 0;
+        }
+
+        function goToProcessFirstPage() {
+            currentProcessPage = 1;
+            updateProcessPagination();
+        }
+
+        function goToProcessPrevPage() {
+            if (currentProcessPage > 1) {
+                currentProcessPage--;
+                updateProcessPagination();
+            }
+        }
+
+        function goToProcessNextPage() {
+            const totalPages = Math.ceil(filteredProcesses.length / processItemsPerPage);
+            if (currentProcessPage < totalPages) {
+                currentProcessPage++;
+                updateProcessPagination();
+            }
+        }
+
+        function goToProcessLastPage() {
+            const totalPages = Math.ceil(filteredProcesses.length / processItemsPerPage);
+            currentProcessPage = totalPages || 1;
+            updateProcessPagination();
+        }
+
+        let diskChart = null;
+        let memoryPieChart = null;
+        let memoryLineChart = null;
+        let memoryHistory = []; // Store memory history for line chart
+        const MAX_HISTORY_POINTS = 20;
+
+        function loadMemoryInfo() {
+            if (!currentSerial) {
+                document.getElementById('memoryTableBody').innerHTML = '<tr><td colspan="4">Please select a device first</td></tr>';
+                return;
+            }
+            
+            document.getElementById('memoryTableBody').innerHTML = '<tr><td colspan="4" class="adb-loading">Loading memory information...</td></tr>';
+            
+            fetch(`/adb-gui/system-memory?serial=${encodeURIComponent(currentSerial)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.meminfo) {
+                        renderMemoryInfo(data.meminfo);
+                    } else {
+                        document.getElementById('memoryTableBody').innerHTML = '<tr><td colspan="4">Failed to load memory information: ' + (data.error || 'Unknown error') + '</td></tr>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading memory info:', err);
+                    document.getElementById('memoryTableBody').innerHTML = '<tr><td colspan="4">Error loading memory information</td></tr>';
+                });
+        }
+
+        function renderMemoryInfo(meminfo) {
+            const tbody = document.getElementById('memoryTableBody');
+            tbody.innerHTML = '';
+            
+            if (!meminfo || Object.keys(meminfo).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No memory information available</td></tr>';
+                return;
+            }
+            
+            // Key memory metrics to display
+            const keyMetrics = [
+                'MemTotal', 'MemFree', 'MemAvailable', 'Buffers', 'Cached',
+                'SwapTotal', 'SwapFree', 'SwapCached', 'Active', 'Inactive',
+                'Active(anon)', 'Inactive(anon)', 'Active(file)', 'Inactive(file)',
+                'AnonPages', 'Mapped', 'Shmem', 'Slab', 'SReclaimable', 'SUnreclaim',
+                'KernelStack', 'PageTables', 'VmallocUsed', 'CmaTotal', 'CmaFree'
+            ];
+            
+            const memTotal = meminfo['MemTotal'] || 0;
+            
+            // Render table
+            keyMetrics.forEach(key => {
+                if (meminfo.hasOwnProperty(key)) {
+                    const value = meminfo[key];
+                    const valueMB = (value / 1024).toFixed(2);
+                    const percentage = memTotal > 0 ? ((value / memTotal) * 100).toFixed(2) : 0;
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="adb-package-name">${key}</td>
+                        <td>${value.toLocaleString()} kB</td>
+                        <td>${valueMB} MB</td>
+                        <td>${percentage}%</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            });
+            
+            // Render charts
+            renderMemoryPieChart(meminfo);
+            renderMemoryLineChart(meminfo);
+        }
+
+        function renderMemoryPieChart(meminfo) {
+            const ctx = document.getElementById('memoryPieChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart if any
+            if (memoryPieChart) {
+                memoryPieChart.destroy();
+            }
+            
+            const memTotal = meminfo['MemTotal'] || 0;
+            const memFree = meminfo['MemFree'] || 0;
+            const memAvailable = meminfo['MemAvailable'] || 0;
+            const buffers = meminfo['Buffers'] || 0;
+            const cached = meminfo['Cached'] || 0;
+            const active = meminfo['Active'] || 0;
+            const inactive = meminfo['Inactive'] || 0;
+            
+            // Calculate used memory
+            const memUsed = memTotal - memFree;
+            const otherUsed = memUsed - (buffers + cached + active + inactive);
+            
+            const labels = [];
+            const data = [];
+            const backgroundColors = [];
+            const borderColors = [];
+            
+            // Add main memory categories
+            if (memFree > 0) {
+                labels.push('Free');
+                data.push(memFree);
+                backgroundColors.push('rgba(52, 168, 83, 0.8)');
+                borderColors.push('rgba(52, 168, 83, 1)');
+            }
+            
+            if (cached > 0) {
+                labels.push('Cached');
+                data.push(cached);
+                backgroundColors.push('rgba(66, 133, 244, 0.8)');
+                borderColors.push('rgba(66, 133, 244, 1)');
+            }
+            
+            if (buffers > 0) {
+                labels.push('Buffers');
+                data.push(buffers);
+                backgroundColors.push('rgba(251, 188, 4, 0.8)');
+                borderColors.push('rgba(251, 188, 4, 1)');
+            }
+            
+            if (active > 0) {
+                labels.push('Active');
+                data.push(active);
+                backgroundColors.push('rgba(234, 67, 53, 0.8)');
+                borderColors.push('rgba(234, 67, 53, 1)');
+            }
+            
+            if (inactive > 0) {
+                labels.push('Inactive');
+                data.push(inactive);
+                backgroundColors.push('rgba(156, 39, 176, 0.8)');
+                borderColors.push('rgba(156, 39, 176, 1)');
+            }
+            
+            if (otherUsed > 0) {
+                labels.push('Other Used');
+                data.push(otherUsed);
+                backgroundColors.push('rgba(121, 85, 72, 0.8)');
+                borderColors.push('rgba(121, 85, 72, 1)');
+            }
+            
+            if (data.length === 0) {
+                return;
+            }
+            
+            memoryPieChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Memory (kB)',
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    const valueMB = (value / 1024).toFixed(2);
+                                    
+                                    return `${label}: ${value.toLocaleString()} kB (${valueMB} MB) - ${percentage}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderMemoryLineChart(meminfo) {
+            const ctx = document.getElementById('memoryLineChart');
+            if (!ctx) return;
+            
+            // Add current data point to history
+            const now = new Date();
+            const timestamp = now.toLocaleTimeString();
+            const memTotal = meminfo['MemTotal'] || 0;
+            const memFree = meminfo['MemFree'] || 0;
+            const memAvailable = meminfo['MemAvailable'] || 0;
+            const memUsed = memTotal - memFree;
+            
+            memoryHistory.push({
+                time: timestamp,
+                memTotal: memTotal,
+                memFree: memFree,
+                memAvailable: memAvailable,
+                memUsed: memUsed
+            });
+            
+            // Keep only last MAX_HISTORY_POINTS
+            if (memoryHistory.length > MAX_HISTORY_POINTS) {
+                memoryHistory.shift();
+            }
+            
+            // Destroy existing chart if any
+            if (memoryLineChart) {
+                memoryLineChart.destroy();
+            }
+            
+            if (memoryHistory.length === 0) {
+                return;
+            }
+            
+            const labels = memoryHistory.map(h => h.time);
+            const memTotalData = memoryHistory.map(h => (h.memTotal / 1024).toFixed(2));
+            const memUsedData = memoryHistory.map(h => (h.memUsed / 1024).toFixed(2));
+            const memAvailableData = memoryHistory.map(h => (h.memAvailable / 1024).toFixed(2));
+            const memFreeData = memoryHistory.map(h => (h.memFree / 1024).toFixed(2));
+            
+            memoryLineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Total Memory (MB)',
+                            data: memTotalData,
+                            borderColor: 'rgba(66, 133, 244, 1)',
+                            backgroundColor: 'rgba(66, 133, 244, 0.1)',
+                            tension: 0.4,
+                            fill: false
+                        },
+                        {
+                            label: 'Used Memory (MB)',
+                            data: memUsedData,
+                            borderColor: 'rgba(234, 67, 53, 1)',
+                            backgroundColor: 'rgba(234, 67, 53, 0.1)',
+                            tension: 0.4,
+                            fill: false
+                        },
+                        {
+                            label: 'Available Memory (MB)',
+                            data: memAvailableData,
+                            borderColor: 'rgba(52, 168, 83, 1)',
+                            backgroundColor: 'rgba(52, 168, 83, 0.1)',
+                            tension: 0.4,
+                            fill: false
+                        },
+                        {
+                            label: 'Free Memory (MB)',
+                            data: memFreeData,
+                            borderColor: 'rgba(251, 188, 4, 1)',
+                            backgroundColor: 'rgba(251, 188, 4, 0.1)',
+                            tension: 0.4,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y + ' MB';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Memory (MB)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function loadDiskSpace() {
+            if (!currentSerial) {
+                document.getElementById('diskTableBody').innerHTML = '<tr><td colspan="6">Please select a device first</td></tr>';
+                return;
+            }
+            
+            document.getElementById('diskTableBody').innerHTML = '<tr><td colspan="6" class="adb-loading">Loading disk space...</td></tr>';
+            
+            fetch(`/adb-gui/disk-space?serial=${encodeURIComponent(currentSerial)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.partitions) {
+                        renderDiskSpace(data.partitions);
+                    } else {
+                        document.getElementById('diskTableBody').innerHTML = '<tr><td colspan="6">Failed to load disk space: ' + (data.error || 'Unknown error') + '</td></tr>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading disk space:', err);
+                    document.getElementById('diskTableBody').innerHTML = '<tr><td colspan="6">Error loading disk space</td></tr>';
+                });
+        }
+
+        function renderDiskSpace(partitions) {
+            const tbody = document.getElementById('diskTableBody');
+            tbody.innerHTML = '';
+            
+            if (partitions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6">No disk information available</td></tr>';
+                return;
+            }
+            
+            // Filter to focus on main storage partitions
+            const mainMountPoints = ['/', '/data', '/sdcard', '/storage', '/system', '/cache'];
+            const mainPartitions = partitions.filter(p => 
+                mainMountPoints.includes(p.mounted_on) || 
+                p.filesystem.includes('/dev/block/') ||
+                (p.use_percent > 0 && p.mounted_on && p.mounted_on.startsWith('/'))
+            );
+            
+            // If no main partitions found, use all partitions with usage > 0
+            const displayPartitions = mainPartitions.length > 0 ? mainPartitions : partitions.filter(p => p.use_percent > 0);
+            
+            // Render table
+            displayPartitions.forEach(partition => {
+                const row = document.createElement('tr');
+                const usePercent = partition.use_percent || 0;
+                const percentClass = usePercent > 90 ? 'text-danger' : usePercent > 70 ? 'text-warning' : 'text-success';
+                
+                row.innerHTML = `
+                    <td class="adb-package-name">${partition.filesystem}</td>
+                    <td>${partition.mounted_on || '-'}</td>
+                    <td>${partition.size}</td>
+                    <td>${partition.used}</td>
+                    <td>${partition.available}</td>
+                    <td class="${percentClass}"><strong>${usePercent.toFixed(1)}%</strong></td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Render pie chart
+            renderDiskPieChart(displayPartitions);
+        }
+
+        function renderDiskPieChart(partitions) {
+            const ctx = document.getElementById('diskPieChart');
+            if (!ctx) return;
+            
+            // Destroy existing chart if any
+            if (diskChart) {
+                diskChart.destroy();
+            }
+            
+            // Prepare data for chart
+            const labels = [];
+            const data = [];
+            const backgroundColors = [];
+            const borderColors = [];
+            
+            // Color palette
+            const colors = [
+                { bg: 'rgba(66, 133, 244, 0.8)', border: 'rgba(66, 133, 244, 1)' },
+                { bg: 'rgba(52, 168, 83, 0.8)', border: 'rgba(52, 168, 83, 1)' },
+                { bg: 'rgba(251, 188, 4, 0.8)', border: 'rgba(251, 188, 4, 1)' },
+                { bg: 'rgba(234, 67, 53, 0.8)', border: 'rgba(234, 67, 53, 1)' },
+                { bg: 'rgba(156, 39, 176, 0.8)', border: 'rgba(156, 39, 176, 1)' },
+                { bg: 'rgba(0, 188, 212, 0.8)', border: 'rgba(0, 188, 212, 1)' },
+                { bg: 'rgba(255, 152, 0, 0.8)', border: 'rgba(255, 152, 0, 1)' },
+                { bg: 'rgba(121, 85, 72, 0.8)', border: 'rgba(121, 85, 72, 1)' },
+            ];
+            
+            partitions.forEach((partition, index) => {
+                const label = partition.mounted_on || partition.filesystem.split('/').pop() || 'Unknown';
+                const usedBytes = partition.used_bytes || 0;
+                
+                if (usedBytes > 0) {
+                    labels.push(`${label} (${partition.used})`);
+                    data.push(usedBytes);
+                    
+                    const color = colors[index % colors.length];
+                    backgroundColors.push(color.bg);
+                    borderColors.push(color.border);
+                }
+            });
+            
+            if (data.length === 0) {
+                const canvas = ctx.getContext('2d');
+                if (canvas) {
+                    canvas.clearRect(0, 0, ctx.width, ctx.height);
+                }
+                return;
+            }
+            
+            diskChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Disk Usage',
+                        data: data,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    
+                                    // Format bytes to human readable
+                                    const formatBytes = (bytes) => {
+                                        if (bytes === 0) return '0 B';
+                                        const k = 1024;
+                                        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                                        const i = Math.floor(Math.log(bytes) / Math.log(k));
+                                        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+                                    };
+                                    
+                                    return `${label}: ${formatBytes(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function addLog(message) {
+            const logDiv = document.getElementById('logMessage');
+            const logEntry = document.createElement('div');
+            logEntry.textContent = message;
+            logDiv.insertBefore(logEntry, logDiv.firstChild);
+            
+            while (logDiv.children.length > 10) {
+                logDiv.removeChild(logDiv.lastChild);
+            }
+        }
+
+        // Controller functions
+        let screenWidth = 1080;
+        let screenHeight = 1920;
+        let touchPadActive = false;
+
+        function loadController() {
+            if (!currentSerial) {
+                const screenInfo = document.getElementById('screenInfo');
+                if (screenInfo) screenInfo.textContent = 'Please select a device first';
+                return;
+            }
+            loadScreenInfo();
+        }
+
+        function loadScreenInfo() {
+            fetch(`/adb-gui/screen-info?serial=${encodeURIComponent(currentSerial)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const sizeText = data.size || 'Unknown';
+                        const densityText = data.density || '';
+                        const screenInfo = document.getElementById('screenInfo');
+                        if (screenInfo) screenInfo.textContent = `Screen: ${sizeText} ${densityText}`;
+                        
+                        const sizeMatch = sizeText.match(/(\d+)x(\d+)/);
+                        if (sizeMatch) {
+                            screenWidth = parseInt(sizeMatch[1]);
+                            screenHeight = parseInt(sizeMatch[2]);
+                        }
+                    }
+                })
+                .catch(err => console.error('Error loading screen info:', err));
+        }
+
+        // Touch pad functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const touchPad = document.getElementById('touchPad');
+            const touchIndicator = document.getElementById('touchIndicator');
+            
+            if (touchPad && touchIndicator) {
+                touchPad.addEventListener('mousedown', handleTouchStart);
+                touchPad.addEventListener('mousemove', handleTouchMove);
+                touchPad.addEventListener('mouseup', handleTouchEnd);
+                touchPad.addEventListener('mouseleave', handleTouchEnd);
+                touchPad.addEventListener('touchstart', handleTouchStart);
+                touchPad.addEventListener('touchmove', handleTouchMove);
+                touchPad.addEventListener('touchend', handleTouchEnd);
+            }
+        });
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            touchPadActive = true;
+            updateTouchPosition(e);
+        }
+
+        function handleTouchMove(e) {
+            if (!touchPadActive) return;
+            e.preventDefault();
+            updateTouchPosition(e);
+        }
+
+        function handleTouchEnd(e) {
+            if (!touchPadActive) return;
+            e.preventDefault();
+            touchPadActive = false;
+            const touchIndicator = document.getElementById('touchIndicator');
+            if (touchIndicator) touchIndicator.style.display = 'none';
+            
+            const touchPad = document.getElementById('touchPad');
+            if (!touchPad) return;
+            
+            const rect = touchPad.getBoundingClientRect();
+            const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX) || 0;
+            const clientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY) || 0;
+            const x = Math.round(clientX - rect.left);
+            const y = Math.round(clientY - rect.top);
+            
+            const actualX = Math.round((x / rect.width) * screenWidth);
+            const actualY = Math.round((y / rect.height) * screenHeight);
+            
+            sendTouch(actualX, actualY);
+        }
+
+        function updateTouchPosition(e) {
+            const touchPad = document.getElementById('touchPad');
+            const touchIndicator = document.getElementById('touchIndicator');
+            if (!touchPad || !touchIndicator) return;
+            
+            const rect = touchPad.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            
+            const actualX = Math.round((x / rect.width) * screenWidth);
+            const actualY = Math.round((y / rect.height) * screenHeight);
+            
+            const touchX = document.getElementById('touchX');
+            const touchY = document.getElementById('touchY');
+            if (touchX) touchX.textContent = actualX;
+            if (touchY) touchY.textContent = actualY;
+            
+            touchIndicator.style.left = x + 'px';
+            touchIndicator.style.top = y + 'px';
+            touchIndicator.style.display = 'block';
+        }
+
+        function sendTouch(x, y) {
+            if (!currentSerial) {
+                addLog('Please select a device first');
+                return;
+            }
+            
+            fetch('/adb-gui/touch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({x: x, y: y, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(`Touch: (${x}, ${y})`);
+                } else {
+                    addLog('Touch failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => addLog('Error: ' + err));
+        }
+
+        function sendKeyEvent(keycode) {
+            if (!currentSerial) {
+                addLog('Please select a device first');
+                return;
+            }
+            
+            fetch('/adb-gui/keyevent', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({keycode: keycode, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(`Key: ${keycode}`);
+                } else {
+                    addLog('Key event failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => addLog('Error: ' + err));
+        }
+
+        function sendTextInput() {
+            const textInput = document.getElementById('textInput');
+            if (!textInput) return;
+            
+            const text = textInput.value.trim();
+            if (!text) {
+                alert('Please enter text');
+                return;
+            }
+            
+            if (!currentSerial) {
+                addLog('Please select a device first');
+                return;
+            }
+            
+            fetch('/adb-gui/text', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: text, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(`Text sent: ${text}`);
+                    textInput.value = '';
+                } else {
+                    addLog('Text send failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => addLog('Error: ' + err));
+        }
+
+        function quickSwipe(direction) {
+            if (!currentSerial) {
+                addLog('Please select a device first');
+                return;
+            }
+            
+            let x1, y1, x2, y2;
+            const centerX = screenWidth / 2;
+            const centerY = screenHeight / 2;
+            const distance = 300;
+            
+            switch(direction) {
+                case 'up':
+                    x1 = x2 = centerX;
+                    y1 = centerY + distance;
+                    y2 = centerY - distance;
+                    break;
+                case 'down':
+                    x1 = x2 = centerX;
+                    y1 = centerY - distance;
+                    y2 = centerY + distance;
+                    break;
+                case 'left':
+                    y1 = y2 = centerY;
+                    x1 = centerX + distance;
+                    x2 = centerX - distance;
+                    break;
+                case 'right':
+                    y1 = y2 = centerY;
+                    x1 = centerX - distance;
+                    x2 = centerX + distance;
+                    break;
+            }
+            
+            fetch('/adb-gui/swipe', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({x1: x1, y1: y1, x2: x2, y2: y2, duration: 300, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(`Swipe ${direction}`);
+                } else {
+                    addLog('Swipe failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => addLog('Error: ' + err));
+        }
+
+        function sendCustomSwipe() {
+            const x1 = parseInt(document.getElementById('swipeX1')?.value || 0);
+            const y1 = parseInt(document.getElementById('swipeY1')?.value || 0);
+            const x2 = parseInt(document.getElementById('swipeX2')?.value || 0);
+            const y2 = parseInt(document.getElementById('swipeY2')?.value || 0);
+            
+            if (!currentSerial) {
+                addLog('Please select a device first');
+                return;
+            }
+            
+            fetch('/adb-gui/swipe', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({x1: x1, y1: y1, x2: x2, y2: y2, duration: 300, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(`Swipe from (${x1}, ${y1}) to (${x2}, ${y2})`);
+                } else {
+                    addLog('Swipe failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => addLog('Error: ' + err));
+        }
+
+        function launchApp(packageName) {
+            if (!currentSerial) {
+                addLog('Please select a device first');
+                return;
+            }
+            
+            fetch('/adb-gui/launch-app', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({package: packageName, serial: currentSerial})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    addLog(data.message || `Launched ${packageName}`);
+                } else {
+                    addLog('Launch failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => addLog('Error: ' + err));
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            filteredPackages = [];
+            updatePagination();
+            filteredProcesses = [];
+            updateProcessPagination();
+            loadDevices();
+        });
+    </script>
+{% endblock %}
+

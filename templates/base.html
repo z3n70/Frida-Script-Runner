@@ -65,6 +65,11 @@
                             <i class="bi bi-globe2"></i> Mobile Proxy
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/adb-gui') %}active{% endif %}" href="{{ url_for('adb_gui_page') }}">
+                            <i class="bi bi-globe2"></i> ADB GUI
+                        </a>
+                    </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="comingSoonDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-stars"></i> Coming Soon
@@ -79,11 +84,6 @@
                             <li>
                                 <span class="dropdown-item disabled">
                                     <i class="bi bi-download"></i> APK &amp; IPA Downloader
-                                </span>
-                            </li>
-                            <li>
-                                <span class="dropdown-item disabled">
-                                    <i class="bi bi-gear"></i> ADB Setting
                                 </span>
                             </li>
                             <li>
