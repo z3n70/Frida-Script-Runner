@@ -26,6 +26,29 @@ from mobile_proxy import (
     get_local_proxy_ips,
 )
 
+from adb_gui import (
+    connect_adb,
+    get_devices,
+    get_device_info,
+    get_packages as get_adb_packages,
+    clear_package_data,
+    uninstall_package,
+    force_stop_package,
+    install_package,
+    get_running_processes,
+    get_app_memory_info,
+    get_system_memory_info,
+    get_disk_space,
+    get_screen_info,
+    send_touch_event,
+    send_swipe_event,
+    send_key_event,
+    send_text,
+    launch_app,
+    get_package_activity,
+    check_device_responsive,
+)
+
 sys.tracebacklimit = 0
 
 parser = argparse.ArgumentParser(description='FSR Tool')
@@ -253,12 +276,14 @@ def run_adb_push_command(device_id, local_path, remote_path, timeout=30, retries
     raise Exception(f"ADB push failed after {retries + 1} attempts")
     
 
-def run_ideviceinfo(timeout=5):
+def run_ideviceinfo(timeout=2):
     try:
         result = subprocess.run(["ideviceinfo"], capture_output=True, text=True, check=True, timeout=timeout)
         return result.stdout
     except subprocess.TimeoutExpired:
-        return "Error: ideviceinfo command timed out."
+        return ""
+    except Exception:
+        return ""
 
 def get_frida_server_url(architecture, version=None):
     if version:
@@ -556,21 +581,46 @@ def there_is_adb_and_devices():
     message = ""
 
     try:
-        result = run_adb_command(["adb", "devices"])
+        result = run_adb_command(["adb", "devices"], timeout=2)
         connected_devices = result.strip().split('\n')[1:]
-        device_ids = [line.split('\t')[0] for line in connected_devices if line.strip()]
+        device_ids = []
+        
+        for line in connected_devices:
+            if line.strip():
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    device_id = parts[0].strip()
+                    state = parts[1].strip()
+                    if state == "device":
+                        device_ids.append(device_id)
 
         if device_ids:
             for device_id in device_ids:
-                model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"])
-                serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"])
-                versi_andro = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"])
-                available_devices.append({"device_id": device_id, "model": model, "serial_number": serial_number, "versi_andro": versi_andro})
-            adb_is_active = True
-            message = "Device is available"
+                try:
+                    quick_check = run_adb_command(["adb", "-s", device_id, "shell", "echo", "test"], timeout=2)
+                    if "test" not in quick_check:
+                        continue
+                    
+                    model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"], timeout=2)
+                    serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"], timeout=2)
+                    versi_andro = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"], timeout=2)
+                    
+                    available_devices.append({
+                        "device_id": device_id, 
+                        "model": model.strip() if model else "Unknown", 
+                        "serial_number": serial_number.strip() if serial_number else "N/A", 
+                        "versi_andro": versi_andro.strip() if versi_andro else "N/A"
+                    })
+                except Exception as e:
+                    continue
+            
+            if available_devices:
+                adb_is_active = True
+                message = "Device is available"
     except Exception as e:
         message = f"Error checking Android device connectivity: {e}"
-    else:
+    
+    if not adb_is_active:
         try:
             ideviceinfo_output = run_ideviceinfo()
             if ideviceinfo_output:
@@ -652,8 +702,12 @@ def get_script_content_route():
 @app.route('/')
 def index():
     device_type = get_device_type()
-    adb_check = there_is_adb_and_devices()
-    if adb_check["is_true"]:
+    try:
+        adb_check = there_is_adb_and_devices()
+    except Exception as e:
+        return render_template('no-usb.html')
+    
+    if adb_check["is_true"] and adb_check.get("available_devices"):
         try:
             bypass_scripts_1, bypass_scripts_2 = get_bypass_scripts()
             
@@ -775,6 +829,300 @@ def mobile_proxy_ips():
     Return list of local IP addresses (from ifconfig/ipconfig) for proxy selection.
     """
     result = get_local_proxy_ips()
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+# adb gui
+@app.route('/adb-gui', methods=['GET'])
+def adb_gui_page():
+    """
+    Render ADB GUI page for managing Android devices and packages.
+    """
+    return render_template('adb-gui.html')
+
+
+@app.route('/adb-gui/connect', methods=['POST'])
+def adb_gui_connect():
+    """
+    Connect to ADB device via TCP/IP.
+    """
+    data = request.get_json(silent=True) or request.form
+    ip = (data.get('ip') or '').strip()
+    port = (str(data.get('port') or '')).strip()
+    
+    result = connect_adb(ip, port)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/devices', methods=['GET'])
+def adb_gui_devices():
+    """
+    Get list of connected ADB devices.
+    """
+    result = get_devices()
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/device-info', methods=['GET'])
+def adb_gui_device_info():
+    """
+    Get device information.
+    """
+    serial = request.args.get('serial', None)
+    result = get_device_info(serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/packages', methods=['GET'])
+def adb_gui_packages():
+    """
+    Get list of installed packages.
+    """
+    serial = request.args.get('serial', None)
+    result = get_adb_packages(serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/package/clear', methods=['POST'])
+def adb_gui_clear_package():
+    """
+    Clear data for a package.
+    """
+    data = request.get_json(silent=True) or request.form
+    package_name = (data.get('package') or '').strip()
+    serial = data.get('serial', None)
+    
+    if not package_name:
+        return jsonify({'success': False, 'error': 'Package name is required'}), 400
+    
+    result = clear_package_data(package_name, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/package/uninstall', methods=['POST'])
+def adb_gui_uninstall_package():
+    """
+    Uninstall a package.
+    """
+    data = request.get_json(silent=True) or request.form
+    package_name = (data.get('package') or '').strip()
+    serial = data.get('serial', None)
+    
+    if not package_name:
+        return jsonify({'success': False, 'error': 'Package name is required'}), 400
+    
+    result = uninstall_package(package_name, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/package/force-stop', methods=['POST'])
+def adb_gui_force_stop_package():
+    """
+    Force stop a package.
+    """
+    data = request.get_json(silent=True) or request.form
+    package_name = (data.get('package') or '').strip()
+    serial = data.get('serial', None)
+    
+    if not package_name:
+        return jsonify({'success': False, 'error': 'Package name is required'}), 400
+    
+    result = force_stop_package(package_name, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/package/install', methods=['POST'])
+def adb_gui_install_package():
+    """
+    Install an APK package.
+    """
+    data = request.get_json(silent=True) or request.form
+    apk_path = (data.get('apk_path') or '').strip()
+    serial = data.get('serial', None)
+    
+    if not apk_path:
+        return jsonify({'success': False, 'error': 'APK path is required'}), 400
+    
+    result = install_package(apk_path, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/processes', methods=['GET'])
+def adb_gui_processes():
+    """
+    Get running processes.
+    """
+    serial = request.args.get('serial', None)
+    result = get_running_processes(serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/memory-info', methods=['GET'])
+def adb_gui_memory_info():
+    """
+    Get memory information for an app.
+    """
+    package_name = request.args.get('package', None)
+    serial = request.args.get('serial', None)
+    
+    if not package_name:
+        return jsonify({'success': False, 'error': 'Package name is required'}), 400
+    
+    result = get_app_memory_info(package_name, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/system-memory', methods=['GET'])
+def adb_gui_system_memory():
+    """
+    Get system memory information from /proc/meminfo.
+    """
+    serial = request.args.get('serial', None)
+    result = get_system_memory_info(serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/disk-space', methods=['GET'])
+def adb_gui_disk_space():
+    """
+    Get disk space information.
+    """
+    serial = request.args.get('serial', None)
+    result = get_disk_space(serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/screen-info', methods=['GET'])
+def adb_gui_screen_info():
+    """
+    Get screen information.
+    """
+    serial = request.args.get('serial', None)
+    result = get_screen_info(serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/touch', methods=['POST'])
+def adb_gui_touch():
+    """
+    Send touch event.
+    """
+    data = request.get_json(silent=True) or request.form
+    x = int(data.get('x', 0))
+    y = int(data.get('y', 0))
+    serial = data.get('serial', None)
+    
+    result = send_touch_event(x, y, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/swipe', methods=['POST'])
+def adb_gui_swipe():
+    """
+    Send swipe event.
+    """
+    data = request.get_json(silent=True) or request.form
+    x1 = int(data.get('x1', 0))
+    y1 = int(data.get('y1', 0))
+    x2 = int(data.get('x2', 0))
+    y2 = int(data.get('y2', 0))
+    duration = int(data.get('duration', 300))
+    serial = data.get('serial', None)
+    
+    result = send_swipe_event(x1, y1, x2, y2, duration, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/keyevent', methods=['POST'])
+def adb_gui_keyevent():
+    """
+    Send key event.
+    """
+    data = request.get_json(silent=True) or request.form
+    keycode = (data.get('keycode') or '').strip()
+    serial = data.get('serial', None)
+    
+    if not keycode:
+        return jsonify({'success': False, 'error': 'Keycode is required'}), 400
+    
+    result = send_key_event(keycode, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/text', methods=['POST'])
+def adb_gui_text():
+    """
+    Send text input.
+    """
+    data = request.get_json(silent=True) or request.form
+    text = (data.get('text') or '').strip()
+    serial = data.get('serial', None)
+    
+    if not text:
+        return jsonify({'success': False, 'error': 'Text is required'}), 400
+    
+    result = send_text(text, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/launch-app', methods=['POST'])
+def adb_gui_launch_app():
+    """
+    Launch an app.
+    """
+    data = request.get_json(silent=True) or request.form
+    package_name = (data.get('package') or '').strip()
+    activity = data.get('activity', None)
+    serial = data.get('serial', None)
+    
+    if not package_name:
+        return jsonify({'success': False, 'error': 'Package name is required'}), 400
+    
+    result = launch_app(package_name, activity, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/package-activity', methods=['GET'])
+def adb_gui_package_activity():
+    """
+    Get main activity of a package.
+    """
+    package_name = request.args.get('package', None)
+    serial = request.args.get('serial', None)
+    
+    if not package_name:
+        return jsonify({'success': False, 'error': 'Package name is required'}), 400
+    
+    result = get_package_activity(package_name, serial)
+    status = 200 if result.get("success") else 500
+    return jsonify(result), status
+
+
+@app.route('/adb-gui/check-responsive', methods=['GET'])
+def adb_gui_check_responsive():
+    """
+    Check if device is responsive.
+    """
+    serial = request.args.get('serial', None)
+    result = check_device_responsive(serial)
     status = 200 if result.get("success") else 500
     return jsonify(result), status
 
