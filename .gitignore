@@ -12,3 +12,4 @@ env/
 .venv/
 .env.local
 .env.production
+AGENTS.md
