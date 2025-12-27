@@ -394,10 +394,10 @@
         let currentProcessPage = 1;
         let processItemsPerPage = 50;
         
-        // Auto-refresh variables
+    
         let deviceRefreshInterval = null;
-        const DEVICE_REFRESH_INTERVAL = 2000; // Refresh every 2 seconds
-        let isAutoRefreshing = false; // Flag to track if we're in auto-refresh mode
+        const DEVICE_REFRESH_INTERVAL = 2000;
+        let isAutoRefreshing = false; 
 
         document.querySelectorAll('.adb-tab').forEach(tab => {
             tab.addEventListener('click', function() {
@@ -429,15 +429,12 @@
             });
         });
 
-        // Auto-refresh functions
         function startDeviceAutoRefresh() {
-            // Clear existing interval if any
             stopDeviceAutoRefresh();
             
-            // Start auto-refresh
             isAutoRefreshing = true;
             deviceRefreshInterval = setInterval(() => {
-                loadDevices(true); // Pass true for silent refresh
+                loadDevices(true); 
             }, DEVICE_REFRESH_INTERVAL);
             
             addLog('Auto-refresh enabled (refreshing every 2 seconds)');
@@ -450,12 +447,10 @@
             }
         }
         
-        // Pause auto-refresh when tab is not visible, resume when visible
         document.addEventListener('visibilitychange', function() {
             if (document.hidden) {
                 stopDeviceAutoRefresh();
             } else {
-                // Only start if we're connected (have IP/Port set)
                 const ip = document.getElementById('adbIp').value.trim();
                 const port = document.getElementById('adbPort').value.trim();
                 if (ip && port) {
@@ -484,7 +479,6 @@
                 if (data.success) {
                     addLog('Connected successfully');
                     loadDevices();
-                    // Start auto-refresh after successful connection
                     startDeviceAutoRefresh();
                 } else {
                     addLog('Connection failed: ' + (data.error || 'Unknown error'));
@@ -499,7 +493,6 @@
 
         function loadDevices(silent = false) {
             const deviceList = document.getElementById('deviceList');
-            // Only show loading indicator if not in silent mode
             if (!silent) {
                 deviceList.innerHTML = '<div class="adb-loading">Loading devices...</div>';
             }
@@ -514,7 +507,6 @@
                         const previousCount = parseInt(deviceCount.textContent) || 0;
                         deviceCount.textContent = data.devices.length;
                         
-                        // Filter only devices with state "device" (actually connected)
                         const connectedDevices = data.devices.filter(d => d.state === 'device');
                         
                         if (data.devices.length === 0) {
@@ -531,7 +523,6 @@
                             deviceBtn.className = 'adb-device-btn';
                             const deviceName = device.product || device.model || device.serial || 'Device';
                             
-                            // Add state indicator
                             let stateIndicator = '';
                             if (device.state === 'device') {
                                 stateIndicator = ' ✓';
@@ -558,7 +549,6 @@
                             deviceList.appendChild(deviceBtn);
                         });
                         
-                        // Only log if not in silent mode or if device count changed
                         if (!silent) {
                             if (connectedDevices.length > 0) {
                                 addLog(`Found ${connectedDevices.length} connected device(s). Click to select.`);
@@ -566,7 +556,6 @@
                                 addLog('No devices in "device" state. Please check device connection.');
                             }
                         } else if (previousCount !== data.devices.length) {
-                            // Log only when device count changes during auto-refresh
                             if (data.devices.length > previousCount) {
                                 addLog(`Device detected: ${data.devices.length} device(s) connected`);
                             } else if (data.devices.length < previousCount) {
@@ -598,18 +587,15 @@
             currentSerial = serial;
             addLog('Selected device: ' + serial);
             
-            // Show loading state
             document.getElementById('infoState').textContent = 'Loading...';
             document.getElementById('infoUsb').textContent = 'Loading...';
             document.getElementById('infoProduct').textContent = 'Loading...';
             document.getElementById('infoDevice').textContent = 'Loading...';
             
-            // Check if device is responsive first
             checkDeviceAndLoad(serial);
         }
 
         function checkDeviceAndLoad(serial) {
-            // Quick check if device is responsive before loading heavy data
             const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Check timeout')), 3000)
             );
@@ -621,18 +607,15 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.responsive) {
-                        // Device is responsive, load data
                         loadDeviceInfo(serial);
                         loadPackages();
                     } else {
-                        // Device not responsive
                         document.getElementById('infoState').textContent = '-';
                         document.getElementById('infoUsb').textContent = '-';
                         document.getElementById('infoProduct').textContent = '-';
                         document.getElementById('infoDevice').textContent = '-';
                         addLog('Device is not responsive. Please check connection.');
                         
-                        // Show error in packages table
                         document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4">Device not responsive. Please check connection.</td></tr>';
                         filteredPackages = [];
                         updatePagination();
@@ -640,7 +623,6 @@
                 })
                 .catch(err => {
                     console.error('Error checking device:', err);
-                    // If check fails, try to load anyway but with shorter timeout
                     addLog('Quick check failed, trying to load device info...');
                     loadDeviceInfo(serial);
                     loadPackages();
@@ -686,12 +668,10 @@
                 return;
             }
             
-            // Show loading state
             document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="4" class="adb-loading">Loading packages...</td></tr>';
             
             addLog('Load packages');
             
-            // Add timeout to prevent hanging (reduced from 8s to 5s)
             const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Request timeout')), 5000)
             );
@@ -1060,7 +1040,7 @@
         let diskChart = null;
         let memoryPieChart = null;
         let memoryLineChart = null;
-        let memoryHistory = []; // Store memory history for line chart
+        let memoryHistory = []; 
         const MAX_HISTORY_POINTS = 20;
 
         function loadMemoryInfo() {
@@ -1095,7 +1075,6 @@
                 return;
             }
             
-            // Key memory metrics to display
             const keyMetrics = [
                 'MemTotal', 'MemFree', 'MemAvailable', 'Buffers', 'Cached',
                 'SwapTotal', 'SwapFree', 'SwapCached', 'Active', 'Inactive',
@@ -1106,7 +1085,6 @@
             
             const memTotal = meminfo['MemTotal'] || 0;
             
-            // Render table
             keyMetrics.forEach(key => {
                 if (meminfo.hasOwnProperty(key)) {
                     const value = meminfo[key];
@@ -1124,7 +1102,6 @@
                 }
             });
             
-            // Render charts
             renderMemoryPieChart(meminfo);
             renderMemoryLineChart(meminfo);
         }
@@ -1133,7 +1110,6 @@
             const ctx = document.getElementById('memoryPieChart');
             if (!ctx) return;
             
-            // Destroy existing chart if any
             if (memoryPieChart) {
                 memoryPieChart.destroy();
             }
@@ -1146,7 +1122,6 @@
             const active = meminfo['Active'] || 0;
             const inactive = meminfo['Inactive'] || 0;
             
-            // Calculate used memory
             const memUsed = memTotal - memFree;
             const otherUsed = memUsed - (buffers + cached + active + inactive);
             
@@ -1155,7 +1130,6 @@
             const backgroundColors = [];
             const borderColors = [];
             
-            // Add main memory categories
             if (memFree > 0) {
                 labels.push('Free');
                 data.push(memFree);
@@ -1249,7 +1223,6 @@
             const ctx = document.getElementById('memoryLineChart');
             if (!ctx) return;
             
-            // Add current data point to history
             const now = new Date();
             const timestamp = now.toLocaleTimeString();
             const memTotal = meminfo['MemTotal'] || 0;
@@ -1265,12 +1238,10 @@
                 memUsed: memUsed
             });
             
-            // Keep only last MAX_HISTORY_POINTS
             if (memoryHistory.length > MAX_HISTORY_POINTS) {
                 memoryHistory.shift();
             }
             
-            // Destroy existing chart if any
             if (memoryLineChart) {
                 memoryLineChart.destroy();
             }
@@ -1398,7 +1369,6 @@
                 return;
             }
             
-            // Filter to focus on main storage partitions
             const mainMountPoints = ['/', '/data', '/sdcard', '/storage', '/system', '/cache'];
             const mainPartitions = partitions.filter(p => 
                 mainMountPoints.includes(p.mounted_on) || 
@@ -1406,10 +1376,8 @@
                 (p.use_percent > 0 && p.mounted_on && p.mounted_on.startsWith('/'))
             );
             
-            // If no main partitions found, use all partitions with usage > 0
             const displayPartitions = mainPartitions.length > 0 ? mainPartitions : partitions.filter(p => p.use_percent > 0);
             
-            // Render table
             displayPartitions.forEach(partition => {
                 const row = document.createElement('tr');
                 const usePercent = partition.use_percent || 0;
@@ -1426,7 +1394,6 @@
                 tbody.appendChild(row);
             });
             
-            // Render pie chart
             renderDiskPieChart(displayPartitions);
         }
 
@@ -1434,18 +1401,15 @@
             const ctx = document.getElementById('diskPieChart');
             if (!ctx) return;
             
-            // Destroy existing chart if any
             if (diskChart) {
                 diskChart.destroy();
             }
             
-            // Prepare data for chart
             const labels = [];
             const data = [];
             const backgroundColors = [];
             const borderColors = [];
             
-            // Color palette
             const colors = [
                 { bg: 'rgba(66, 133, 244, 0.8)', border: 'rgba(66, 133, 244, 1)' },
                 { bg: 'rgba(52, 168, 83, 0.8)', border: 'rgba(52, 168, 83, 1)' },
@@ -1512,7 +1476,6 @@
                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                     const percentage = ((value / total) * 100).toFixed(1);
                                     
-                                    // Format bytes to human readable
                                     const formatBytes = (bytes) => {
                                         if (bytes === 0) return '0 B';
                                         const k = 1024;
@@ -1541,7 +1504,6 @@
             }
         }
 
-        // Controller functions
         let screenWidth = 1080;
         let screenHeight = 1920;
         let touchPadActive = false;
@@ -1575,7 +1537,6 @@
                 .catch(err => console.error('Error loading screen info:', err));
         }
 
-        // Touch pad functionality
         document.addEventListener('DOMContentLoaded', function() {
             const touchPad = document.getElementById('touchPad');
             const touchIndicator = document.getElementById('touchIndicator');
@@ -1831,7 +1792,6 @@
             updateProcessPagination();
             loadDevices();
             
-            // Start auto-refresh if IP and Port are already set
             const ip = document.getElementById('adbIp').value.trim();
             const port = document.getElementById('adbPort').value.trim();
             if (ip && port) {
@@ -1839,7 +1799,6 @@
             }
         });
         
-        // Clean up interval when page is unloaded
         window.addEventListener('beforeunload', function() {
             stopDeviceAutoRefresh();
         });
