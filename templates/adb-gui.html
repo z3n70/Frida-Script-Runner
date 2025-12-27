@@ -393,6 +393,11 @@
         let filteredProcesses = [];
         let currentProcessPage = 1;
         let processItemsPerPage = 50;
+        
+        // Auto-refresh variables
+        let deviceRefreshInterval = null;
+        const DEVICE_REFRESH_INTERVAL = 2000; // Refresh every 2 seconds
+        let isAutoRefreshing = false; // Flag to track if we're in auto-refresh mode
 
         document.querySelectorAll('.adb-tab').forEach(tab => {
             tab.addEventListener('click', function() {
@@ -424,6 +429,41 @@
             });
         });
 
+        // Auto-refresh functions
+        function startDeviceAutoRefresh() {
+            // Clear existing interval if any
+            stopDeviceAutoRefresh();
+            
+            // Start auto-refresh
+            isAutoRefreshing = true;
+            deviceRefreshInterval = setInterval(() => {
+                loadDevices(true); // Pass true for silent refresh
+            }, DEVICE_REFRESH_INTERVAL);
+            
+            addLog('Auto-refresh enabled (refreshing every 2 seconds)');
+        }
+        
+        function stopDeviceAutoRefresh() {
+            if (deviceRefreshInterval) {
+                clearInterval(deviceRefreshInterval);
+                deviceRefreshInterval = null;
+            }
+        }
+        
+        // Pause auto-refresh when tab is not visible, resume when visible
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopDeviceAutoRefresh();
+            } else {
+                // Only start if we're connected (have IP/Port set)
+                const ip = document.getElementById('adbIp').value.trim();
+                const port = document.getElementById('adbPort').value.trim();
+                if (ip && port) {
+                    startDeviceAutoRefresh();
+                }
+            }
+        });
+
         document.getElementById('connectBtn').addEventListener('click', function() {
             const ip = document.getElementById('adbIp').value.trim();
             const port = document.getElementById('adbPort').value.trim();
@@ -444,18 +484,25 @@
                 if (data.success) {
                     addLog('Connected successfully');
                     loadDevices();
+                    // Start auto-refresh after successful connection
+                    startDeviceAutoRefresh();
                 } else {
                     addLog('Connection failed: ' + (data.error || 'Unknown error'));
+                    stopDeviceAutoRefresh();
                 }
             })
             .catch(err => {
                 addLog('Error: ' + err);
+                stopDeviceAutoRefresh();
             });
         });
 
-        function loadDevices() {
+        function loadDevices(silent = false) {
             const deviceList = document.getElementById('deviceList');
-            deviceList.innerHTML = '<div class="adb-loading">Loading devices...</div>';
+            // Only show loading indicator if not in silent mode
+            if (!silent) {
+                deviceList.innerHTML = '<div class="adb-loading">Loading devices...</div>';
+            }
             
             fetch('/adb-gui/devices')
                 .then(res => res.json())
@@ -464,6 +511,7 @@
                     const deviceCount = document.getElementById('deviceCount');
                     
                     if (data.success) {
+                        const previousCount = parseInt(deviceCount.textContent) || 0;
                         deviceCount.textContent = data.devices.length;
                         
                         // Filter only devices with state "device" (actually connected)
@@ -471,6 +519,9 @@
                         
                         if (data.devices.length === 0) {
                             deviceList.innerHTML = '<div class="adb-no-devices">No devices found</div>';
+                            if (!silent) {
+                                addLog('No devices found');
+                            }
                             return;
                         }
                         
@@ -507,22 +558,34 @@
                             deviceList.appendChild(deviceBtn);
                         });
                         
-                        // Don't auto-select - let user choose manually
-                        // This prevents timeout issues when device is not fully responsive
-                        if (connectedDevices.length > 0) {
-                            addLog(`Found ${connectedDevices.length} connected device(s). Click to select.`);
-                        } else if (data.devices.length > 0) {
-                            addLog('No devices in "device" state. Please check device connection.');
+                        // Only log if not in silent mode or if device count changed
+                        if (!silent) {
+                            if (connectedDevices.length > 0) {
+                                addLog(`Found ${connectedDevices.length} connected device(s). Click to select.`);
+                            } else if (data.devices.length > 0) {
+                                addLog('No devices in "device" state. Please check device connection.');
+                            }
+                        } else if (previousCount !== data.devices.length) {
+                            // Log only when device count changes during auto-refresh
+                            if (data.devices.length > previousCount) {
+                                addLog(`Device detected: ${data.devices.length} device(s) connected`);
+                            } else if (data.devices.length < previousCount) {
+                                addLog(`Device disconnected: ${data.devices.length} device(s) remaining`);
+                            }
                         }
                     } else {
                         deviceList.innerHTML = '<div class="adb-no-devices">Failed to load devices</div>';
-                        addLog('Failed to load devices: ' + (data.error || 'Unknown error'));
+                        if (!silent) {
+                            addLog('Failed to load devices: ' + (data.error || 'Unknown error'));
+                        }
                     }
                 })
                 .catch(err => {
                     const deviceList = document.getElementById('deviceList');
                     deviceList.innerHTML = '<div class="adb-no-devices">Error loading devices</div>';
-                    addLog('Error loading devices: ' + err);
+                    if (!silent) {
+                        addLog('Error loading devices: ' + err);
+                    }
                 });
         }
 
@@ -1767,6 +1830,18 @@
             filteredProcesses = [];
             updateProcessPagination();
             loadDevices();
+            
+            // Start auto-refresh if IP and Port are already set
+            const ip = document.getElementById('adbIp').value.trim();
+            const port = document.getElementById('adbPort').value.trim();
+            if (ip && port) {
+                startDeviceAutoRefresh();
+            }
+        });
+        
+        // Clean up interval when page is unloaded
+        window.addEventListener('beforeunload', function() {
+            stopDeviceAutoRefresh();
         });
     </script>
 {% endblock %}
