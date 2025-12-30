@@ -26,7 +26,6 @@ socket.on("fsr_log", function (data) {
   outputContainer.scrollTop = outputContainer.scrollHeight;
 });
 
-// Send input to running Frida process
 function sendFridaInput() {
   const inputEl = document.getElementById('fridaCommandInput');
   if (!inputEl) return;
@@ -54,18 +53,15 @@ function sendFridaInput() {
   });
 }
 
-// Clear FSR logs function
 function clearFSRLogs() {
   var outputContainer = document.getElementById("outputContainer");
   outputContainer.innerHTML = "";
 }
 
-// Load packages function
 function loadPackages() {
   const packageSelect = document.getElementById("packageSelect");
   const refreshButton = document.querySelector('button[onclick="loadPackages()"]');
   
-  // Show loading state
   packageSelect.innerHTML = '<option disabled>Loading packages...</option>';
   refreshButton.disabled = true;
   refreshButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Loading...';
@@ -74,26 +70,21 @@ function loadPackages() {
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        // Clear existing options
         packageSelect.innerHTML = '';
         
         if (data.packages && data.packages.length > 0) {
-          // Add packages
           data.packages.forEach(package => {
             const option = document.createElement('option');
-            // Package format: "PID - com.example.app"
-            // Extract the package identifier (part after " - ")
             const packageParts = package.split(' - ');
             if (packageParts.length >= 2) {
-              option.value = packageParts[1]; // Get package identifier
+              option.value = packageParts[1];
             } else {
-              option.value = package; // Fallback to full string
+              option.value = package;
             }
             option.textContent = package;
             packageSelect.appendChild(option);
           });
           
-          // Show success message
           appendContent(`Successfully loaded ${data.packages.length} packages`);
         } else {
           packageSelect.innerHTML = '<option disabled>No packages found</option>';
@@ -110,13 +101,11 @@ function loadPackages() {
       appendContent(`Error loading packages: ${error.message}`);
     })
     .finally(() => {
-      // Reset button state
       refreshButton.disabled = false;
       refreshButton.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh Packages';
     });
 }
 
-// Load packages with retry mechanism
 function loadPackagesWithRetry(maxRetries = 3, delay = 2000) {
   let retryCount = 0;
   
@@ -127,29 +116,24 @@ function loadPackagesWithRetry(maxRetries = 3, delay = 2000) {
       .then(response => response.json())
       .then(data => {
         if (data.success && data.packages && data.packages.length > 0) {
-          // Success - load packages
           packageSelect.innerHTML = '';
           data.packages.forEach(package => {
             const option = document.createElement('option');
-            // Package format: "PID - com.example.app"
-            // Extract the package identifier (part after " - ")
             const packageParts = package.split(' - ');
             if (packageParts.length >= 2) {
-              option.value = packageParts[1]; // Get package identifier
+              option.value = packageParts[1];
             } else {
-              option.value = package; // Fallback to full string
+              option.value = package;
             }
             option.textContent = package;
             packageSelect.appendChild(option);
           });
           appendContent(`Successfully loaded ${data.packages.length} packages`);
         } else if (retryCount < maxRetries) {
-          // Retry if Frida server might still be starting
           retryCount++;
           appendContent(`Attempt ${retryCount}/${maxRetries}: Frida server may still be starting, retrying in ${delay/1000}s...`);
           setTimeout(attemptLoad, delay);
         } else {
-          // Max retries reached
           packageSelect.innerHTML = '<option disabled>No packages found after retries</option>';
           appendContent(`Failed to load packages after ${maxRetries} attempts. Please check Frida server status.`);
         }
@@ -169,9 +153,7 @@ function loadPackagesWithRetry(maxRetries = 3, delay = 2000) {
   attemptLoad();
 }
 
-// Restart Frida server function
 function restartFridaServer() {
-  // Get the first connected device
   const fridaStatusCards = document.querySelectorAll('.card-body');
   let deviceId = null;
   
@@ -206,7 +188,6 @@ function restartFridaServer() {
     if (data.success) {
       appendContent(`Frida server restarted successfully: ${data.message}`);
       
-      // Update status
       const statusCard = document.querySelector(`[data-device-id="${deviceId}"]`);
       if (statusCard) {
         const cardBody = statusCard.closest('.card-body');
@@ -221,8 +202,6 @@ function restartFridaServer() {
           button.setAttribute('data-device-id', deviceId);
         }
       }
-      
-      // Auto-refresh packages after restart
       setTimeout(() => {
         loadPackagesWithRetry();
       }, 3000);
@@ -297,12 +276,10 @@ stopButton.addEventListener("click", function (event) {
   stopButton.disabled = true;
   runButton.disabled = false;
   fixButton.style.display = "none";
-  // Clear logs without removing input controls
   var outputFridaEl = document.getElementById("outputFrida");
   var outputListEl = document.getElementById("output-list");
   if (outputFridaEl) outputFridaEl.innerHTML = "";
   if (outputListEl) outputListEl.innerHTML = "";
-  // Clear the inline pre without duplicating IDs
   logOutput.innerHTML = '';
   fetch("/stop-frida")
     .then((response) => response.text())
@@ -328,13 +305,11 @@ fixButton.addEventListener("click", function (event) {
   .then(response => response.json())
   .then(data => {
     if (data.success) {
-      // Update the script content textarea with the fixed script
       if (data.fixed_script) {
         const scriptContentTextarea = document.getElementById("scriptContent");
         if (scriptContentTextarea) {
           scriptContentTextarea.value = data.fixed_script;
           console.log("Updated script content with fixed script");
-          // Also enable the custom script checkbox since we now have custom content
           const useCustomScript = document.getElementById("customScriptCheckbox");
           if (useCustomScript) {
             useCustomScript.checked = true;
@@ -384,7 +359,6 @@ runButton.addEventListener("click", function (event) {
   runButton.disabled = true;
   stopButton.disabled = false;
   fixButton.style.display = "inline-block";
-  // Reset logs without removing input controls
   var outputFridaEl = document.getElementById("outputFrida");
   var outputListEl = document.getElementById("output-list");
   if (outputFridaEl) outputFridaEl.innerHTML = "";
@@ -400,7 +374,6 @@ function runFrida() {
   const formData = new FormData(form);
   const packageValue = formData.get('package');
   
-  // Debug: Show what package is selected
   console.log('Selected package:', packageValue);
   appendContent(`Selected package: ${packageValue}`);
   
@@ -435,7 +408,6 @@ function appendContent(content) {
   outputContainer.innerHTML += `<span class="text-success">~</span> ${content} </br>`;
   outputContainer.scrollTop = outputContainer.scrollHeight;
 }
-// modal(); pada codeshare search
 document.addEventListener("DOMContentLoaded", function () {
   const mainInput = document.getElementById("codeshareSearchInput");
   const modalInput = document.getElementById("modalSearchInput");
@@ -495,7 +467,6 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // Frida Server Management
-  // Add event listeners for Frida server buttons
   document.addEventListener('click', function(e) {
     if (e.target.classList.contains('start-frida-server') || e.target.closest('.start-frida-server')) {
       const button = e.target.classList.contains('start-frida-server') ? e.target : e.target.closest('.start-frida-server');
@@ -510,12 +481,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // Function to start Frida server
   function startFridaServer(deviceId, button) {
     button.disabled = true;
     button.innerHTML = '<i class="bi bi-hourglass-split"></i> Starting...';
-    
-    // Check if force download is enabled
     const forceDownloadCheckbox = document.getElementById(`force-download-${deviceId}`);
     const forceDownload = forceDownloadCheckbox ? forceDownloadCheckbox.checked : false;
     
@@ -532,13 +500,11 @@ document.addEventListener("DOMContentLoaded", function () {
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        // Update the button to show stop option
         const cardBody = button.closest('.card-body');
         const statusBadges = cardBody.querySelectorAll('.badge');
         statusBadges[1].className = 'badge bg-success';
         statusBadges[1].innerHTML = '<i class="bi bi-play-circle"></i> Running';
         
-        // Update installed status if we have server name
         if (data.frida_server_name) {
           statusBadges[0].innerHTML = `<i class="bi bi-check-circle"></i> ${data.frida_server_name}`;
         }
@@ -547,10 +513,8 @@ document.addEventListener("DOMContentLoaded", function () {
         button.innerHTML = '<i class="bi bi-stop-fill"></i> Stop';
         button.setAttribute('data-device-id', deviceId);
         
-        // Show success message
         appendContent(`Frida server started successfully: ${data.message}`);
         
-        // Auto-refresh packages after a short delay with retry mechanism
         setTimeout(() => {
           loadPackagesWithRetry();
         }, 2000);
@@ -566,7 +530,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Function to stop Frida server
   function stopFridaServer(deviceId, button) {
     button.disabled = true;
     button.innerHTML = '<i class="bi bi-hourglass-split"></i> Stopping...';
@@ -583,23 +546,18 @@ document.addEventListener("DOMContentLoaded", function () {
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        // Update the button to show start option
         const cardBody = button.closest('.card-body');
         const statusBadges = cardBody.querySelectorAll('.badge');
         
-        // Update running status badge to show "Stopped"
         statusBadges[1].className = 'badge bg-danger';
         statusBadges[1].innerHTML = '<i class="bi bi-stop-circle"></i> Stopped';
         
-        // Update button to show "Start" option
         button.className = 'btn btn-sm btn-success start-frida-server';
         button.innerHTML = '<i class="bi bi-play-fill"></i> Start';
         button.setAttribute('data-device-id', deviceId);
         
-        // Show success message
         appendContent(`Frida server stopped successfully: ${data.message}`);
         
-        // Add visual feedback
         console.log('Status updated: Frida server stopped');
       } else {
         throw new Error(data.error || 'Failed to stop Frida server');
@@ -613,7 +571,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Refresh Frida server status periodically
   function refreshFridaStatus() {
     fetch('/frida-server-status')
       .then(response => response.json())
@@ -623,7 +580,6 @@ document.addEventListener("DOMContentLoaded", function () {
           return;
         }
         
-        // Update status for each device
         Object.keys(data).forEach(deviceId => {
           const status = data[deviceId];
           const statusCard = document.querySelector(`[data-device-id="${deviceId}"]`);
@@ -631,19 +587,16 @@ document.addEventListener("DOMContentLoaded", function () {
             const cardBody = statusCard.querySelector('.card-body');
             const statusBadges = cardBody.querySelectorAll('.badge');
             
-            // Update installed status
             statusBadges[0].className = status.installed ? 'badge bg-success me-2' : 'badge bg-warning me-2';
             statusBadges[0].innerHTML = status.installed ? 
               `<i class="bi bi-check-circle"></i> ${status.frida_server_name || 'Installed'}` : 
               '<i class="bi bi-exclamation-triangle"></i> Not Installed';
             
-            // Update running status
             statusBadges[1].className = status.running ? 'badge bg-success' : 'badge bg-danger';
             statusBadges[1].innerHTML = status.running ? 
               '<i class="bi bi-play-circle"></i> Running' : 
               '<i class="bi bi-stop-circle"></i> Stopped';
             
-            // Update button
             const button = cardBody.querySelector('button');
             if (button) {
               if (status.running) {
@@ -656,7 +609,6 @@ document.addEventListener("DOMContentLoaded", function () {
               button.disabled = false;
             }
             
-            // Debug log
             console.log(`Status refresh for ${deviceId}: Running=${status.running}, Installed=${status.installed}`);
           } else {
             console.warn(`Status card not found for device: ${deviceId}`);
@@ -668,14 +620,11 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   }
 
-  // Refresh status every 10 seconds
   setInterval(refreshFridaStatus, 10000);
   
-  // Manual refresh function - can be called from console or button
   window.manualRefreshStatus = function() {
     console.log('Manual status refresh triggered');
     
-    // Use force refresh endpoint for more reliable status
     fetch('/force-refresh-status', {
       method: 'POST',
       headers: {
@@ -689,7 +638,6 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
       
-      // Update status for each device
       Object.keys(data).forEach(deviceId => {
         const status = data[deviceId];
         const statusCard = document.querySelector(`[data-device-id="${deviceId}"]`);
@@ -697,19 +645,16 @@ document.addEventListener("DOMContentLoaded", function () {
           const cardBody = statusCard.querySelector('.card-body');
           const statusBadges = cardBody.querySelectorAll('.badge');
           
-          // Update installed status
           statusBadges[0].className = status.installed ? 'badge bg-success me-2' : 'badge bg-warning me-2';
           statusBadges[0].innerHTML = status.installed ? 
             `<i class="bi bi-check-circle"></i> ${status.frida_server_name || 'Installed'}` : 
             '<i class="bi bi-exclamation-triangle"></i> Not Installed';
           
-          // Update running status
           statusBadges[1].className = status.running ? 'badge bg-success' : 'badge bg-danger';
           statusBadges[1].innerHTML = status.running ? 
             '<i class="bi bi-play-circle"></i> Running' : 
             '<i class="bi bi-stop-circle"></i> Stopped';
           
-          // Update button
           const button = cardBody.querySelector('button');
           if (button) {
             if (status.running) {
@@ -736,13 +681,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   };
   
-  // Initial status refresh
   refreshFridaStatus();
 });
 
-// Device auto-refresh management (similar to adb-gui)
 let deviceRefreshInterval = null;
-const DEVICE_REFRESH_INTERVAL = 2000; // 2 seconds like adb-gui
+const DEVICE_REFRESH_INTERVAL = 2000;
 
 function loadConnectedDevices(silent = false) {
   const devicesContainer = document.getElementById('devicesContainer');
@@ -752,7 +695,6 @@ function loadConnectedDevices(silent = false) {
     devicesContainer.innerHTML = '<div class="text-muted small">Loading devices...</div>';
   }
   
-  // Use check-device-status for comprehensive device detection (Android + iOS)
   fetch('/check-device-status')
     .then(res => res.json())
     .then(data => {
@@ -793,7 +735,6 @@ function loadConnectedDevices(silent = false) {
       devicesContainer.innerHTML = html;
     })
     .catch(err => {
-      // Fallback to adb-gui/devices endpoint for Android only
       fetch('/adb-gui/devices')
         .then(res => res.json())
         .then(data => {
@@ -852,7 +793,7 @@ function startDeviceAutoRefresh() {
   stopDeviceAutoRefresh();
   
   deviceRefreshInterval = setInterval(() => {
-    loadConnectedDevices(true); // Silent refresh
+    loadConnectedDevices(true);
   }, DEVICE_REFRESH_INTERVAL);
 }
 
@@ -863,18 +804,14 @@ function stopDeviceAutoRefresh() {
   }
 }
 
-// Initialize device auto-refresh when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
   const devicesContainer = document.getElementById('devicesContainer');
   if (devicesContainer) {
-    // Initial load
     loadConnectedDevices();
-    // Start auto-refresh every 2 seconds (like adb-gui)
     startDeviceAutoRefresh();
   }
 });
 
-// Stop auto-refresh when page is hidden, resume when visible
 document.addEventListener('visibilitychange', function() {
   if (document.hidden) {
     stopDeviceAutoRefresh();
@@ -886,7 +823,6 @@ document.addEventListener('visibilitychange', function() {
   }
 });
 
-// Hook up interactive Frida input controls when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
   const sendBtn = document.getElementById('sendFridaInputBtn');
   const inputEl = document.getElementById('fridaCommandInput');
@@ -905,7 +841,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// Toggle Auto Generate Script Input
 function toggleAutoGenerateInput() {
   const selectedScript = document.getElementById('selectedScript');
   const autoGenerateDiv = document.getElementById('autoGenerateDiv');
@@ -917,7 +852,6 @@ function toggleAutoGenerateInput() {
   }
 }
 
-// Generate Frida Script using AI
 function generateFridaScript() {
   const promptText = document.getElementById('autoGeneratePrompt').value.trim();
   const scriptContentArea = document.getElementById('scriptContent');
@@ -928,12 +862,10 @@ function generateFridaScript() {
     return;
   }
   
-  // Show loading state
   generateButton.disabled = true;
   generateButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Generating...';
   scriptContentArea.value = 'Generating Frida script, please wait...';
   
-  // Send request to backend for script generation
   fetch('/generate-frida-script', {
     method: 'POST',
     headers: {
@@ -959,7 +891,6 @@ function generateFridaScript() {
     appendContent('❌ Network error while generating script');
   })
   .finally(() => {
-    // Reset button state
     generateButton.disabled = false;
     generateButton.innerHTML = '<i class="bi bi-cpu"></i> Generate Script';
   });

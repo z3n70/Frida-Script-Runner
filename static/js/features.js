@@ -7,7 +7,6 @@ function filterOptions(searchInputId, selectId) {
     for (let i = 0; i < options.length; i++) {
       const txtValue = options[i].text || options[i].innerText;
       const match = txtValue.toUpperCase().includes(filter);
-      // Hide option reliably across browsers
       options[i].style.display = match ? "" : "none";
       options[i].hidden = !match;
     }
@@ -15,7 +14,6 @@ function filterOptions(searchInputId, selectId) {
 
 // apk download
 document.getElementById('apkDownloadForm').addEventListener('submit', async function(e) {
-    // allow default form submit to proceed for iframe download
     
     const form = e.target;
     const formData = new FormData(form);
@@ -24,7 +22,6 @@ document.getElementById('apkDownloadForm').addEventListener('submit', async func
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...';
 
-    // Use hidden iframe target to trigger a single download (avoids IDM + browser double prompt)
     const iframe = document.getElementById('download_frame');
     let restored = false;
     const restore = () => {
@@ -34,11 +31,9 @@ document.getElementById('apkDownloadForm').addEventListener('submit', async func
         submitBtn.innerHTML = '<i class="bi bi-download"></i> Download APK';
         iframe.removeEventListener('load', restore);
     };
-    // Attempt to restore when iframe load fires (may not fire for file downloads)
     iframe.addEventListener('load', restore);
-    // Fallback restore after 15 seconds
     setTimeout(restore, 15000);
-    return; // stop JS-driven fetch to avoid duplicate download
+    return;
     
     try {
         const response = await fetch(form.action, {
@@ -55,7 +50,6 @@ document.getElementById('apkDownloadForm').addEventListener('submit', async func
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
 
-        // Prefer filename from Content-Disposition header if present
         let filename = null;
         const disposition = response.headers.get('Content-Disposition');
         if (disposition) {
@@ -186,7 +180,6 @@ document.getElementById('dumpIPAForm').addEventListener('submit', function(e) {
 
                 progressBar.style.width = '100%';
                 progressBar.classList.remove('progress-bar-animated');
-                // showStatus('IPA berhasil diunduh!', 'alert-success');
             }
         } else {
             const errorText = await response.text();

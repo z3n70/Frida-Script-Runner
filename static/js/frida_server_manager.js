@@ -1,4 +1,4 @@
-// Simple logger to the page-local FSR logs box
+
 function fsmLog(message, type = 'info') {
   const out = document.getElementById('fsmOutput');
   const prefix = type === 'error' ? '<span class="text-danger">!</span>' : '<span class="text-success">~</span>';
@@ -22,8 +22,6 @@ function loadDevices() {
     .then(r => r.json())
     .then(data => {
       if (!data.success) throw new Error(data.error || 'Failed to load devices');
-
-      // Render device cards
       if (!data.devices || data.devices.length === 0) {
         devicesContainer.innerHTML = '<div class="text-danger">No devices connected</div>';
         targetSelect.innerHTML = '<option disabled selected>No devices</option>';
@@ -74,7 +72,6 @@ function loadDevices() {
         targetSelect.innerHTML = '<option disabled selected>No Android devices</option>';
       }
 
-      // Trigger release label update according to selected device arch
       const selected = targetSelect.options[targetSelect.selectedIndex];
       const arch = selected && selected.dataset.arch ? selected.dataset.arch : '';
       updateReleaseLabelsForArch(arch);
@@ -105,11 +102,9 @@ function loadReleases() {
       releases.forEach(tag => {
         const opt = document.createElement('option');
         opt.value = tag;
-        // Label will be post-processed with arch info
         opt.textContent = tag;
         releaseSelect.appendChild(opt);
       });
-      // After loading, add arch suffix if device selected
       const devSel = document.getElementById('targetDeviceSelect');
       const selected = devSel.options[devSel.selectedIndex];
       const arch = selected && selected.dataset.arch ? selected.dataset.arch : '';
@@ -227,7 +222,6 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('startWithVersionBtn').addEventListener('click', startWithVersion);
   document.getElementById('setDockerVersionBtn').addEventListener('click', setDockerClientVersion);
 
-  // Update labels when device selection changes
   document.getElementById('targetDeviceSelect').addEventListener('change', function() {
     const selected = this.options[this.selectedIndex];
     const arch = selected && selected.dataset.arch ? selected.dataset.arch : '';

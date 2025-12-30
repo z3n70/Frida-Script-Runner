@@ -13,7 +13,6 @@ function giLogsClear() {
 async function loadFridaReleasesInto(selectId) {
   const select = document.getElementById(selectId);
   const seen = new Set();
-  // Load local cached versions first
   try {
     const rLocal = await fetch('/api/gadget/local');
     const jLocal = await rLocal.json();
@@ -36,7 +35,6 @@ async function loadFridaReleasesInto(selectId) {
     }
   } catch {}
 
-  // Load remote releases and append any not already present
   try {
     const r = await fetch('/api/frida/releases');
     const data = await r.json();
@@ -113,10 +111,8 @@ document.addEventListener('DOMContentLoaded', function() {
       if (resp.ok && contentType.startsWith('application/vnd.android.package-archive')) {
         const blob = await resp.blob();
         const url = window.URL.createObjectURL(blob);
-        // Persist the blob for optional install
         window._fsr_lastInjectedApkBlob = blob;
 
-        // Build action buttons
         const wrap = document.createElement('div');
         wrap.className = 'd-flex gap-2';
 

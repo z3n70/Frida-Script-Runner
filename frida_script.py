@@ -612,7 +612,6 @@ def _modify_manifest_set_application(manifest_path: str, new_app_class: str) -> 
         return True
     except Exception as e:
         log_to_fsr_logs(f"[GADGET] Manifest set application failed: {e}")
-        # Fallback text replace
         try:
             with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
                 txt = f.read()
@@ -620,7 +619,6 @@ def _modify_manifest_set_application(manifest_path: str, new_app_class: str) -> 
             if re.search(r'android:name="[^"]+"', txt):
                 new_txt = re.sub(r'(android:name=")([^"]+)(")', rf'\1{new_app_class}\3', txt, count=1)
             else:
-                # Insert name attr in <application ...>
                 m = re.search(r'<application\b', txt, re.IGNORECASE)
                 if not m:
                     raise RuntimeError('cannot find <application> to set name')
@@ -714,7 +712,6 @@ def _modify_manifest_set_component_factory(manifest_path: str, new_factory_class
         return True
     except Exception as e:
         log_to_fsr_logs(f"[GADGET] Manifest set component factory failed: {e}")
-        # Text fallback
         try:
             with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
                 txt = f.read()
@@ -751,7 +748,6 @@ def _debug_log_manifest(manifest_path: str):
 
 
 def _find_manifest_file(workdir: str) -> str:
-    # Prefer root AndroidManifest.xml, but search recursively as fallback
     root_path = os.path.join(workdir, 'AndroidManifest.xml')
     if os.path.isfile(root_path):
         return root_path
@@ -1787,7 +1783,6 @@ def api_gadget_inject():
                                 else:
                                     log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
                 else:
-                    # No android:name present; try ComponentFactory wrapper directly
                     log_to_fsr_logs("[GADGET] No Application name; trying ComponentFactory wrapper first")
                     base_cf = _get_manifest_component_factory(manifest_path)
                     cf_wrapper = 'com.fsr.AppCF'
@@ -1795,7 +1790,6 @@ def api_gadget_inject():
                     if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
                         log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
                     else:
-                        # Fall back to provider/activity
                         package_name = _read_manifest_package(manifest_path) or 'com.fsr'
                         provider_class = 'com.fsr.FSRInit'
                         authorities = f"{package_name}.fsrinit"
@@ -1812,15 +1806,11 @@ def api_gadget_inject():
                                 log_to_fsr_logs(f"[GADGET] Activity autoload details: {act_info}")
                         else:
                             log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
-
-            # As a final safety net, also patch MainActivity.onCreate to load the gadget
             try:
                 ok, info = _fallback_activity_autoload(workdir, manifest_path)
                 log_to_fsr_logs(f"[GADGET] Additional activity autoload attempt: {info}")
             except Exception as e:
                 log_to_fsr_logs(f"[GADGET] Additional activity autoload skipped: {e}")
-
-            # Best-effort: also register a ContentProvider autoload to increase reliability across OEMs/OS versions
             try:
                 package_name = _read_manifest_package(manifest_path) or 'com.fsr'
                 provider_class = 'com.fsr.FSRInit'
@@ -1832,18 +1822,15 @@ def api_gadget_inject():
             except Exception as e:
                 log_to_fsr_logs(f"[GADGET] Additional provider autoload skipped: {e}")
 
-        # As some apps include invalid resource file names (e.g., $avd_*), sanitize first
         try:
             _sanitize_aapt_invalid_resources(workdir)
         except Exception as e:
             log_to_fsr_logs(f"[GADGET] Resource sanitize skipped: {e}")
 
-        # Build unsigned APK
         log_to_fsr_logs("[GADGET] Building APK (apktool b)...")
         _run_apktool_build(apktool_path, workdir, out_unsigned)
         log_to_fsr_logs(f"[GADGET] Build OK -> {out_unsigned}")
 
-        # Align + sign using Android build-tools (zipalign + apksigner)
         signed_path = None
         try:
             log_to_fsr_logs('[GADGET] Aligning and signing APK using Android build-tools')
@@ -1852,7 +1839,6 @@ def api_gadget_inject():
         except Exception as e:
             log_to_fsr_logs(f"[GADGET] Align/sign failed: {e}")
 
-        # Fallback: return unsigned if signing still failed
         final_path = signed_path or out_unsigned
         dl_name = os.path.basename(final_path)
         if not dl_name.endswith('.apk'):
@@ -1862,7 +1848,6 @@ def api_gadget_inject():
         except Exception:
             fsz = -1
         log_to_fsr_logs(f"[GADGET] Final APK: {final_path} (size={fsz} bytes)")
-        # Sanity: ensure AndroidManifest.xml is compiled (binary), not text
         try:
             import zipfile
             with zipfile.ZipFile(final_path, 'r') as zf:
@@ -2106,7 +2091,7 @@ def run_adb_push_command(device_id, local_path, remote_path, timeout=30, retries
             if attempt < retries:
                 log_to_fsr_logs(f"[WARNING] ADB push timed out (attempt {attempt + 1}), retrying in 5 seconds...")
                 import time
-                time.sleep(5)  # Longer wait for push operations
+                time.sleep(5)
             else:
                 log_to_fsr_logs(f"[ERROR] ADB push timed out after {retries + 1} attempts")
                 raise e
