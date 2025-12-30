@@ -358,6 +358,107 @@
   min-height: 40px;
 }
 
+/* Device Selector Styles */
+.device-selector-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  margin-top: 8px;
+  border-top: 1px solid #e0e0e0;
+  flex-wrap: wrap;
+}
+
+.device-select-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #262d3d;
+  white-space: nowrap;
+  font-family: var(--font-head);
+  flex-shrink: 0;
+}
+
+.device-select-label i {
+  font-size: 1rem;
+  color: #204ecf;
+}
+
+.device-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.device-select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  color: #262d3d;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23262d3d' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 35px;
+}
+
+.device-select:hover {
+  border-color: #204ecf;
+  box-shadow: 0 0 0 2px rgba(32, 78, 207, 0.1);
+}
+
+.device-select:focus {
+  outline: none;
+  border-color: #204ecf;
+  box-shadow: 0 0 0 3px rgba(32, 78, 207, 0.15);
+}
+
+.device-select option {
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.refresh-devices-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: white;
+  color: #262d3d;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.refresh-devices-btn:hover {
+  background: #f5f5f5;
+  border-color: #204ecf;
+  color: #204ecf;
+  transform: rotate(90deg);
+}
+
+.refresh-devices-btn:active {
+  transform: rotate(180deg);
+}
+
+.refresh-devices-btn i {
+  font-size: 1rem;
+}
+
 .status-loading {
   display: flex;
   flex-direction: column;
@@ -632,5 +733,32 @@
 
   .device-details {
     font-size: 0.65rem;
+  }
+
+  .device-selector-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .device-select-label {
+    font-size: 0.8rem;
+  }
+
+  .device-select-wrapper {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .device-select {
+    width: 100%;
+    font-size: 0.8rem;
+  }
+
+  .refresh-devices-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
   }
 }

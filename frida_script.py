@@ -2125,14 +2125,53 @@ def run_adb_push_command(device_id, local_path, remote_path, timeout=30, retries
     raise Exception(f"ADB push failed after {retries + 1} attempts")
     
 
-def run_ideviceinfo(timeout=2):
+def run_ideviceinfo(timeout=2, udid=None):
     try:
-        result = subprocess.run(["ideviceinfo"], capture_output=True, text=True, check=True, timeout=timeout)
+        cmd = ["ideviceinfo"]
+        if udid:
+            cmd.extend(["-u", udid])
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=timeout)
         return result.stdout
     except subprocess.TimeoutExpired:
         return ""
     except Exception:
         return ""
+
+def get_ios_devices():
+    """Get list of connected iOS devices using idevice_id"""
+    ios_devices = []
+    try:
+        result = subprocess.run(["idevice_id", "-l"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            udids = result.stdout.strip().split('\n')
+            for udid in udids:
+                if udid.strip():
+                    device_info_output = run_ideviceinfo(timeout=3, udid=udid.strip())
+                    if device_info_output:
+                        deviceId = re.search(r'UniqueDeviceID:\s*([a-zA-Z0-9-]+)', device_info_output)
+                        model = re.search(r'ProductType:\s*([\w\d,]+)', device_info_output)
+                        device_name = re.search(r'DeviceName:\s*(.+)', device_info_output)
+                        ios_version = re.search(r'ProductVersion:\s*([\d.]+)', device_info_output)
+                        
+                        device_data = {
+                            "UDID": udid.strip(),
+                            "type": "iOS"
+                        }
+                        
+                        if model:
+                            device_data["model"] = model.group(1).strip()
+                        if device_name:
+                            device_data["device_name"] = device_name.group(1).strip()
+                        if ios_version:
+                            device_data["ios_version"] = ios_version.group(1).strip()
+                        
+                        ios_devices.append(device_data)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        pass
+    
+    return ios_devices
 
 def get_frida_server_url(architecture, version=None):
     if version:
@@ -3611,6 +3650,84 @@ def check_device_status():
             "device_count": 0,
             "devices": [],
             "message": f"Error checking device status: {str(e)}"
+        }), 500
+
+@app.route('/api/devices/list')
+def api_devices_list():
+    """Get list of all connected devices (Android and iOS)"""
+    try:
+        all_devices = []
+        
+        try:
+            result = run_adb_command(["adb", "devices", "-l"], timeout=5)
+            if result and not result.strip().startswith("Error:"):
+                lines = result.strip().split('\n') if result else []
+                connected_devices = lines[1:] if len(lines) > 1 else []
+                
+                for line in connected_devices:
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            device_id = parts[0].strip()
+                            state = parts[1].strip()
+                            if state == "device":
+                                try:
+                                    model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"], timeout=3)
+                                    serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"], timeout=3)
+                                    android_version = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"], timeout=3)
+                                    
+                                    model_val = model.strip() if model and not model.strip().startswith("Error:") else "Unknown"
+                                    serial_val = serial_number.strip() if serial_number and not serial_number.strip().startswith("Error:") else device_id
+                                    versi_val = android_version.strip() if android_version and not android_version.strip().startswith("Error:") else "N/A"
+                                    
+                                    all_devices.append({
+                                        "device_id": device_id,
+                                        "identifier": device_id,
+                                        "type": "Android",
+                                        "model": model_val,
+                                        "serial_number": serial_val,
+                                        "android_version": versi_val,
+                                        "display_name": f"{model_val} ({device_id})"
+                                    })
+                                except Exception:
+                                    all_devices.append({
+                                        "device_id": device_id,
+                                        "identifier": device_id,
+                                        "type": "Android",
+                                        "model": "Unknown",
+                                        "serial_number": device_id,
+                                        "android_version": "N/A",
+                                        "display_name": f"Android Device ({device_id})"
+                                    })
+        except Exception:
+            pass
+        
+        ios_devices = get_ios_devices()
+        for ios_device in ios_devices:
+            display_name = ios_device.get("device_name", ios_device.get("model", "iOS Device"))
+            if ios_device.get("ios_version"):
+                display_name += f" (iOS {ios_device['ios_version']})"
+            all_devices.append({
+                "udid": ios_device.get("UDID", ""),
+                "identifier": ios_device.get("UDID", ""),
+                "type": "iOS",
+                "model": ios_device.get("model", "Unknown"),
+                "device_name": ios_device.get("device_name", "Unknown"),
+                "ios_version": ios_device.get("ios_version", "N/A"),
+                "display_name": f"{display_name} ({ios_device.get('UDID', '')[:8]}...)"
+            })
+        
+        return jsonify({
+            "success": True,
+            "devices": all_devices,
+            "count": len(all_devices)
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "devices": [],
+            "count": 0
         }), 500
 
 @app.route('/start-frida-server', methods=['POST'])

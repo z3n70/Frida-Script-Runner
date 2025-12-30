@@ -22,6 +22,20 @@
                     <span id="statusText">Scanning...</span>
                 </span>
             </div>
+            <div class="device-selector-container" id="deviceSelectorContainer" style="display: none;">
+                <label for="deviceSelect" class="device-select-label">
+                    <i class="bi bi-device-hdd"></i>
+                    Select Device:
+                </label>
+                <div class="device-select-wrapper">
+                    <select id="deviceSelect" class="device-select">
+                        <option value="">Loading devices...</option>
+                    </select>
+                    <button id="refreshDevicesBtn" class="refresh-devices-btn" title="Refresh devices">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
             <div class="usb-status-content" id="usbStatusContent">
                 <div class="status-loading">
                     <div class="spinner"></div>
@@ -112,12 +126,114 @@
     <script>
         let deviceCheckInterval;
         let lastDeviceCount = 0;
+        let allDevicesList = [];
+        
+        function loadDevicesList() {
+            fetch('/api/devices/list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.devices && data.devices.length > 0) {
+                        allDevicesList = data.devices;
+                        populateDeviceSelector(data.devices);
+                        showDeviceSelector();
+                        
+                        if (data.devices.length === 1 && !sessionStorage.getItem('selectedDevice')) {
+                            const deviceSelect = document.getElementById('deviceSelect');
+                            deviceSelect.value = data.devices[0].identifier || data.devices[0].device_id || data.devices[0].udid || '';
+                            sessionStorage.setItem('selectedDevice', deviceSelect.value);
+                            updateSelectedDeviceInfo();
+                        }
+                    } else {
+                        hideDeviceSelector();
+                        sessionStorage.removeItem('selectedDevice');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading devices list:', error);
+                    hideDeviceSelector();
+                });
+        }
+        
+        function populateDeviceSelector(devices) {
+            const deviceSelect = document.getElementById('deviceSelect');
+            
+            const newSelect = deviceSelect.cloneNode(true);
+            deviceSelect.parentNode.replaceChild(newSelect, deviceSelect);
+            const deviceSelectNew = document.getElementById('deviceSelect');
+            
+            deviceSelectNew.innerHTML = '';
+            
+            if (devices.length === 0) {
+                deviceSelectNew.innerHTML = '<option value="">No devices found</option>';
+                return;
+            }
+            
+            deviceSelectNew.innerHTML = '<option value="">Select a device...</option>';
+            
+            devices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.identifier || device.device_id || device.udid || '';
+                option.textContent = device.display_name || `${device.type} Device`;
+                option.dataset.deviceType = device.type;
+                option.dataset.deviceIndex = index;
+                deviceSelectNew.appendChild(option);
+            });
+            
+            const savedDevice = sessionStorage.getItem('selectedDevice');
+            if (savedDevice) {
+                const option = Array.from(deviceSelectNew.options).find(opt => opt.value === savedDevice);
+                if (option) {
+                    deviceSelectNew.value = savedDevice;
+                    updateSelectedDeviceInfo();
+                }
+            }
+            
+            deviceSelectNew.addEventListener('change', function() {
+                const selectedValue = this.value;
+                if (selectedValue) {
+                    sessionStorage.setItem('selectedDevice', selectedValue);
+                    updateSelectedDeviceInfo();
+                } else {
+                    sessionStorage.removeItem('selectedDevice');
+                }
+            });
+        }
+        
+        function updateSelectedDeviceInfo() {
+            const deviceSelect = document.getElementById('deviceSelect');
+            const selectedValue = deviceSelect.value;
+            if (!selectedValue) return;
+            
+            const selectedDevice = allDevicesList.find(d => 
+                (d.identifier || d.device_id || d.udid) === selectedValue
+            );
+            
+            if (selectedDevice) {
+                const statusText = document.getElementById('statusText');
+                statusText.textContent = `Selected: ${selectedDevice.display_name || selectedDevice.model || 'Device'}`;
+            }
+        }
+        
+        function showDeviceSelector() {
+            const container = document.getElementById('deviceSelectorContainer');
+            if (container) {
+                container.style.display = 'block';
+            }
+        }
+        
+        function hideDeviceSelector() {
+            const container = document.getElementById('deviceSelectorContainer');
+            if (container) {
+                container.style.display = 'none';
+            }
+        }
         
         function checkDeviceStatus() {
             fetch('/check-device-status')
                 .then(response => response.json())
                 .then(data => {
                     updateDeviceStatus(data);
+                    loadDevicesList();
                 })
                 .catch(error => {
                     console.error('Error checking device status:', error);
@@ -191,8 +307,17 @@
         }
         
         document.addEventListener('DOMContentLoaded', function() {
-            checkDeviceStatus(); 
+            checkDeviceStatus();
+            loadDevicesList();
             deviceCheckInterval = setInterval(checkDeviceStatus, 3000);
+            
+            const refreshBtn = document.getElementById('refreshDevicesBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    loadDevicesList();
+                    checkDeviceStatus();
+                });
+            }
         });
         
         window.addEventListener('beforeunload', function() {
