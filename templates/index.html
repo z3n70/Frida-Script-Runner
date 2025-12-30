@@ -22,24 +22,28 @@
             <form action="/run-frida">
               <div class="row mb-3">
                 <div class="col-8">
-                  <h3 class="h6 fw-bold text-dark"><i class="bi bi-phone"></i> Connected Devices</h3>
-                  {% if connected_device %}
-                    {% for device in connected_device %}
-                      {% if "serial_number" in device | lower %}
-                        <p class="mb-1">Android Device: <i class="bi bi-android text-success"></i> {{ device.model }}</p>
-                        <p class="mb-1">Serial: {{ device.serial_number }}</p>
-                        <p class="mb-1">Android Version: {{device.versi_andro}}</p>
-                      {% else %}
-                        <p class="mb-1">Device: <i class="bi bi-apple text-dark"></i> {{ device.model }}</p>
-                        <p class="mb-1">UDID: {{ device.UDID }}</p>
-                      {% endif %}
-                    {% endfor %}
-                  {% else %}
-                    <p class="text-danger">No device connected</p>
-                  {% endif %}
-                </div>
-                <div class="col-4 text-end">
-                  <a class="btn btn-outline-primary" href="/features" role="button">Other Features</a>
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="h6 fw-bold text-dark mb-0"><i class="bi bi-phone"></i> Connected Devices</h3>
+                  </div>
+                  <div id="devicesContainer">
+                    {% if connected_device %}
+                      {% for device in connected_device %}
+                        {% if "device_id" in device or "serial_number" in device %}
+                          <p class="mb-1">Android Device: <i class="bi bi-android text-success"></i> {{ device.model }}</p>
+                          <p class="mb-1">Serial: {{ device.serial_number }}</p>
+                          <p class="mb-1">Android Version: {{device.versi_andro}}</p>
+                        {% elif "UDID" in device %}
+                          <p class="mb-1">Device: <i class="bi bi-apple text-dark"></i> {{ device.model }}</p>
+                          <p class="mb-1">UDID: {{ device.UDID }}</p>
+                        {% else %}
+                          <p class="mb-1">Device: {{ device.get("device_id", "Unknown") }}</p>
+                        {% endif %}
+                      {% endfor %}
+                    {% else %}
+                      <p class="text-danger">No device connected</p>
+                      <small class="text-muted">Make sure your device is connected via USB and USB debugging is enabled.</small>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
               
@@ -47,7 +51,7 @@
               <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <h3 class="h6 fw-bold text-dark mb-0"><i class="bi bi-server"></i> Frida Server Status</h3>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" onclick="manualRefreshStatus()">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" onclick="manualRefreshStatus()" title="Perbarui status Frida server tanpa reload halaman (auto-refresh setiap 10 detik)">
                     <i class="bi bi-arrow-clockwise"></i> Refresh Status
                   </button>
                 </div>

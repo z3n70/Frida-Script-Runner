@@ -276,6 +276,94 @@ class SSLPinDetector:
         context = lines[start:end]
         return '\n'.join([f"{start + i + 1:4d}: {line.rstrip()}" for i, line in enumerate(context)])
     
+    def download_apk_from_package(self, package_name: str, device_serial: Optional[str] = None, 
+                                  output_path: Optional[str] = None) -> str:
+        """
+        Download APK from installed package on Android device
+        
+        Args:
+            package_name: Package name (e.g., com.example.app)
+            device_serial: Device serial number (optional, for multiple devices)
+            output_path: Output path for downloaded APK (optional, uses temp if not provided)
+            
+        Returns:
+            Path to downloaded APK file
+            
+        Raises:
+            RuntimeError: If download fails
+        """
+        import subprocess
+        
+        # Get APK path from device
+        cmd = ['adb']
+        if device_serial:
+            cmd.extend(['-s', device_serial])
+        cmd.extend(['shell', 'pm', 'path', package_name])
+        
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"Failed to get APK path: {result.stderr}")
+            
+            lines = [ln.strip() for ln in result.stdout.split('\n') if ln.strip()]
+            if not lines:
+                raise RuntimeError(f"Package {package_name} not found on device")
+            
+            # Get first APK path (base APK)
+            apk_remote_path = None
+            for line in lines:
+                if ':' in line:
+                    path = line.split(':', 1)[1].strip()
+                    if path and path.endswith('.apk'):
+                        apk_remote_path = path
+                        break
+            
+            if not apk_remote_path:
+                raise RuntimeError(f"Could not find APK path for package {package_name}")
+            
+            # Determine output path
+            if not output_path:
+                safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
+                # Use tmp/uploads directory (same as UPLOAD_FOLDER in frida_script.py)
+                upload_folder = os.path.join('tmp', 'uploads')
+                os.makedirs(upload_folder, exist_ok=True)
+                output_path = os.path.join(upload_folder, f'{safe_package}.apk')
+            
+            # Ensure output directory exists
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # Pull APK from device
+            pull_cmd = ['adb']
+            if device_serial:
+                pull_cmd.extend(['-s', device_serial])
+            pull_cmd.extend(['pull', apk_remote_path, output_path])
+            
+            pull_result = subprocess.run(
+                pull_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if pull_result.returncode != 0:
+                raise RuntimeError(f"Failed to pull APK: {pull_result.stderr}")
+            
+            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                raise RuntimeError("Downloaded APK is empty or missing")
+            
+            return output_path
+            
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("ADB command timed out")
+        except Exception as e:
+            raise RuntimeError(f"Error downloading APK: {str(e)}")
+
     def detect_ssl_pinning(self, apk_path: str, apktool_path: Optional[str] = None, 
                           verbose: bool = False) -> Dict:
         """

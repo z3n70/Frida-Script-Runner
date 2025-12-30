@@ -740,6 +740,152 @@ document.addEventListener("DOMContentLoaded", function () {
   refreshFridaStatus();
 });
 
+// Device auto-refresh management (similar to adb-gui)
+let deviceRefreshInterval = null;
+const DEVICE_REFRESH_INTERVAL = 2000; // 2 seconds like adb-gui
+
+function loadConnectedDevices(silent = false) {
+  const devicesContainer = document.getElementById('devicesContainer');
+  if (!devicesContainer) return;
+  
+  if (!silent) {
+    devicesContainer.innerHTML = '<div class="text-muted small">Loading devices...</div>';
+  }
+  
+  // Use check-device-status for comprehensive device detection (Android + iOS)
+  fetch('/check-device-status')
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        devicesContainer.innerHTML = '<p class="text-danger mb-0">Failed to load devices</p>';
+        if (!silent) {
+          console.error('Failed to load devices:', data.error);
+        }
+        return;
+      }
+      
+      if (!data.connected || data.device_count === 0) {
+        devicesContainer.innerHTML = '<p class="text-danger mb-0">No device connected</p><small class="text-muted">Make sure your device is connected via USB and USB debugging is enabled.</small>';
+        return;
+      }
+      
+      let html = '';
+      
+      data.devices.forEach(device => {
+        if (device.type === 'Android') {
+          const deviceName = device.model || 'Android Device';
+          html += `<p class="mb-1"><i class="bi bi-android text-success"></i> <strong>${deviceName}</strong></p>`;
+          html += `<p class="mb-1 small text-muted">Serial: ${device.serial_number || device.device_id || 'N/A'}</p>`;
+          if (device.android_version && device.android_version !== 'N/A') {
+            html += `<p class="mb-1 small text-muted">Android: ${device.android_version}</p>`;
+          }
+          html += `<span class="badge bg-success"><i class="bi bi-check-circle"></i> Connected</span>`;
+          html += `</div>`;
+        } else if (device.type === 'iOS') {
+          const deviceName = device.model || 'iOS Device';
+          html += `<p class="mb-1"><i class="bi bi-apple text-dark"></i> <strong>${deviceName}</strong></p>`;
+          html += `<p class="mb-1 small text-muted">UDID: ${device.udid || 'N/A'}</p>`;
+          html += `<span class="badge bg-success"><i class="bi bi-check-circle"></i> Connected</span>`;
+          html += `</div>`;
+        }
+      });
+      
+      devicesContainer.innerHTML = html;
+    })
+    .catch(err => {
+      // Fallback to adb-gui/devices endpoint for Android only
+      fetch('/adb-gui/devices')
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success || data.devices.length === 0) {
+            devicesContainer.innerHTML = '<p class="text-danger mb-0">No device connected</p><small class="text-muted">Make sure your device is connected via USB and USB debugging is enabled.</small>';
+            return;
+          }
+          
+          const connectedDevices = data.devices.filter(d => d.state === 'device');
+          let html = '';
+          
+          if (connectedDevices.length > 0) {
+            connectedDevices.forEach(device => {
+              const deviceName = device.product || device.model || device.serial || 'Device';
+              html += `<p class="mb-1"><i class="bi bi-android text-success"></i> <strong>${deviceName}</strong></p>`;
+              html += `<p class="mb-1 small text-muted">Serial: ${device.serial}</p>`;
+              html += `<span class="badge bg-success"><i class="bi bi-check-circle"></i> Connected</span>`;
+              html += `</div>`;
+            });
+          } else {
+            data.devices.forEach(device => {
+              const deviceName = device.product || device.model || device.serial || 'Device';
+              let stateBadge = '';
+              let stateText = '';
+              
+              if (device.state === 'offline') {
+                stateBadge = 'bg-warning';
+                stateText = 'Offline';
+              } else if (device.state === 'unauthorized') {
+                stateBadge = 'bg-danger';
+                stateText = 'Unauthorized';
+              } else {
+                stateBadge = 'bg-secondary';
+                stateText = device.state;
+              }
+              
+              html += `<p class="mb-1"><i class="bi bi-android text-muted"></i> <strong>${deviceName}</strong></p>`;
+              html += `<p class="mb-1 small text-muted">Serial: ${device.serial}</p>`;
+              html += `<span class="badge ${stateBadge}"><i class="bi bi-exclamation-triangle"></i> ${stateText}</span>`;
+              html += `</div>`;
+            });
+          }
+          
+          devicesContainer.innerHTML = html;
+        })
+        .catch(err2 => {
+          devicesContainer.innerHTML = '<p class="text-danger mb-0">Error loading devices</p>';
+          if (!silent) {
+            console.error('Error loading devices:', err2);
+          }
+        });
+    });
+}
+
+function startDeviceAutoRefresh() {
+  stopDeviceAutoRefresh();
+  
+  deviceRefreshInterval = setInterval(() => {
+    loadConnectedDevices(true); // Silent refresh
+  }, DEVICE_REFRESH_INTERVAL);
+}
+
+function stopDeviceAutoRefresh() {
+  if (deviceRefreshInterval) {
+    clearInterval(deviceRefreshInterval);
+    deviceRefreshInterval = null;
+  }
+}
+
+// Initialize device auto-refresh when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  const devicesContainer = document.getElementById('devicesContainer');
+  if (devicesContainer) {
+    // Initial load
+    loadConnectedDevices();
+    // Start auto-refresh every 2 seconds (like adb-gui)
+    startDeviceAutoRefresh();
+  }
+});
+
+// Stop auto-refresh when page is hidden, resume when visible
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    stopDeviceAutoRefresh();
+  } else {
+    const devicesContainer = document.getElementById('devicesContainer');
+    if (devicesContainer) {
+      startDeviceAutoRefresh();
+    }
+  }
+});
+
 // Hook up interactive Frida input controls when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
   const sendBtn = document.getElementById('sendFridaInputBtn');

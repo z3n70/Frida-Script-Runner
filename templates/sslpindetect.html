@@ -19,18 +19,64 @@
         </div>
         <div class="card-body bg-white">
           <form id="sslpindetectForm" enctype="multipart/form-data">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <div class="mb-3">
-                  <label for="apkFile" class="form-label">
-                    <i class="bi bi-file-earmark-zip"></i> Select APK File
-                  </label>
-                  <input class="form-control" type="file" id="apkFile" name="apkFile" accept=".apk" required>
-                  <small class="text-muted">Upload an Android APK file to analyze</small>
+            <div class="mb-3">
+              <label class="form-label"><i class="bi bi-list-ul"></i> Analysis Mode</label>
+              <div class="btn-group w-100" role="group" aria-label="Analysis mode">
+                <input type="radio" class="btn-check" name="analysisMode" id="modeUpload" value="upload" checked>
+                <label class="btn btn-outline-primary" for="modeUpload">
+                  <i class="bi bi-upload"></i> Upload APK
+                </label>
+                
+                <input type="radio" class="btn-check" name="analysisMode" id="modePackage" value="package">
+                <label class="btn btn-outline-primary" for="modePackage">
+                  <i class="bi bi-phone"></i> Installed Package
+                </label>
+              </div>
+            </div>
+
+            <div id="uploadMode" class="analysis-mode">
+              <div class="row g-3">
+                <div class="col-md-12">
+                  <div class="mb-3">
+                    <label for="apkFile" class="form-label">
+                      <i class="bi bi-file-earmark-zip"></i> Select APK File
+                    </label>
+                    <input class="form-control" type="file" id="apkFile" name="apkFile" accept=".apk">
+                    <small class="text-muted">Upload an Android APK file to analyze</small>
+                  </div>
                 </div>
               </div>
-              
-              <div class="col-md-6">
+            </div>
+
+            <div id="packageMode" class="analysis-mode" style="display: none;">
+              <div class="row g-3">
+                <div class="col-md-12">
+                  <div class="mb-3">
+                    <label for="packageSelect" class="form-label">
+                      <i class="bi bi-phone"></i> Select Installed Package
+                    </label>
+                    <div class="mb-2">
+                      <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="packageSearch" 
+                               placeholder="Search package name...">
+                        <button type="button" class="btn btn-outline-secondary" id="refreshPackagesBtn" title="Refresh package list">
+                          <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                      </div>
+                      <small class="text-muted">Type to filter packages by name</small>
+                    </div>
+                    <select class="form-select" id="packageSelect" name="package_name" size="3" style="max-height: 300px;">
+                      <option value="">Loading packages...</option>
+                    </select>
+                    <small class="text-muted mt-1 d-block">Select a package from your connected Android device</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-12">
                 <div class="mb-3">
                   <label for="apktool_path" class="form-label">
                     <i class="bi bi-tools"></i> Apktool Path (Optional)
@@ -63,20 +109,17 @@
             </div>
           </form>
 
-          <!-- Progress Bar -->
           <div class="progress mt-3 d-none" id="progressBarContainer">
             <div class="progress-bar progress-bar-striped progress-bar-animated" 
                  id="progressBar" role="progressbar" style="width: 0%"></div>
           </div>
 
-          <!-- Status Message -->
           <div id="statusMessage" class="alert d-none mt-3"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Results Section -->
   <div class="row g-3 mt-3" id="resultsSection" style="display: none;">
     <div class="col-lg-12">
       <div class="card shadow-sm">
@@ -84,7 +127,6 @@
           <h2 class="h5 mb-0"><i class="bi bi-check-circle"></i> Analysis Results</h2>
         </div>
         <div class="card-body bg-white">
-          <!-- Summary -->
           <div class="mb-4">
             <h4 class="h6 fw-bold">Summary</h4>
             <div class="row g-3">
@@ -115,13 +157,11 @@
             </div>
           </div>
 
-          <!-- Pattern Counts -->
           <div class="mb-4" id="patternCountsSection">
             <h4 class="h6 fw-bold">Pattern Types Detected</h4>
             <div id="patternCounts" class="row g-2"></div>
           </div>
 
-          <!-- Detailed Matches -->
           <div class="mb-4">
             <h4 class="h6 fw-bold">Detailed Matches</h4>
             <div class="table-responsive">
@@ -145,7 +185,6 @@
     </div>
   </div>
 
-  <!-- Code Preview Modal -->
   <div class="modal fade" id="codePreviewModal" tabindex="-1" aria-labelledby="codePreviewModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">

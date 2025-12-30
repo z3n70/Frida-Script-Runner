@@ -187,15 +187,12 @@ def api_frida_releases():
             data = resp.json()
             tags = [r.get('tag_name') for r in data if r.get('tag_name')]
         else:
-            # Fallback to tags endpoint
             tags_url = 'https://api.github.com/repos/frida/frida/tags'
             r2 = requests.get(tags_url, timeout=30)
             if r2.status_code == 200:
                 data = r2.json()
                 tags = [t.get('name') for t in data if t.get('name')]
-        # Normalize tags (strip leading 'refs/tags/' if any)
         tags = [t.replace('refs/tags/', '') for t in tags]
-        # Keep last 50 entries as a decent selection
         return jsonify({'success': True, 'releases': tags[:50]})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -251,20 +248,16 @@ def api_set_frida_client_version():
         if not version:
             return jsonify({'success': False, 'error': 'version is required'}), 400
 
-        # Install specific frida core version
         cmd1 = [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '--upgrade', f'frida=={version}']
         r1 = subprocess.run(cmd1, capture_output=True, text=True, timeout=600)
         if r1.returncode != 0:
             return jsonify({'success': False, 'error': f'pip error (frida=={version}): {r1.stderr or r1.stdout}'}), 500
 
-        # Upgrade frida-tools to latest compatible
         cmd2 = [sys.executable, '-m', 'pip', 'install', '--no-cache-dir', '--upgrade', 'frida-tools']
         r2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=600)
         if r2.returncode != 0:
-            # Not fatal; continue but report warning
             log_to_fsr_logs(f"[FSM] Warning: upgrading frida-tools failed: {r2.stderr or r2.stdout}")
 
-        # Verify new version
         r3 = subprocess.run(['frida', '--version'], capture_output=True, text=True, timeout=60)
         ver = r3.stdout.strip() if r3.returncode == 0 else 'Unknown'
         return jsonify({'success': True, 'client_version': ver})
@@ -286,7 +279,6 @@ def start_frida_server_version():
         if not adb_check.get('is_true'):
             return jsonify({'success': False, 'error': 'No devices connected'}), 400
 
-        # Find target device (Android only)
         target = None
         for d in adb_check.get('available_devices', []):
             if d.get('device_id') == device_id:
@@ -298,17 +290,14 @@ def start_frida_server_version():
         if 'device_id' not in target:
             return jsonify({'success': False, 'error': 'Only Android devices require frida-server binary'}), 400
 
-        # Determine arch
         arch_raw = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.cpu.abi"]) or ''
         clean_arch = arch_raw.strip().split('-')[0]
         log_to_fsr_logs(f"[FSM] Device {device_id} arch: {arch_raw} -> {clean_arch}")
 
-        # Prepare local paths
         os.makedirs('./frida-server/android', exist_ok=True)
         frida_server_path = os.path.join('./frida-server/android', 'frida-server')
         download_path = os.path.join('frida-server/android', 'frida-server-download.xz')
 
-        # Get release asset URL for given version
         url = get_frida_server_url(clean_arch, version)
         if not url:
             return jsonify({'success': False, 'error': f'No asset found for version {version} arch {clean_arch}'}), 404
@@ -320,18 +309,15 @@ def start_frida_server_version():
         if os.path.exists(download_path):
             os.remove(download_path)
 
-        # Push binary and set perms
         run_adb_command(["adb", "-s", device_id, "root"])
         run_adb_push_command(device_id, frida_server_path, "/data/local/tmp/frida-server")
         run_adb_command(["adb", "-s", device_id, "shell", "chmod", "755", "/data/local/tmp/frida-server"]) 
 
-        # Kill any existing frida processes
         try:
             run_adb_command(["adb", "-s", device_id, "shell", "pkill", "-f", "frida-server"])
         except Exception:
             pass
 
-        # Start as root with fallbacks
         try:
             subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
         except subprocess.TimeoutExpired:
@@ -367,7 +353,6 @@ def get_frida_gadget_url(architecture: str, version: str = None) -> str:
         release_data = response.json()
 
         clean_arch = architecture.strip()
-        # Map ABI to frida asset arch naming when needed
         arch_map = {
             'arm64-v8a': 'arm64',
             'armeabi-v7a': 'arm',
@@ -502,7 +487,6 @@ def _modify_manifest_add_application(manifest_path: str, app_class: str) -> bool
             return False
         name_attr = app.get(android_ns + 'name')
         if name_attr and name_attr.strip():
-            # Already has Application set; v1 injector does not chain
             return False
         app.set(android_ns + 'name', app_class)
         tree.write(manifest_path, encoding='utf-8', xml_declaration=True)
@@ -819,7 +803,6 @@ def _sanitize_aapt_invalid_resources(workdir: str) -> int:
     def res_type_from_dir(dname: str) -> str:
         return dname.split('-')[0] if dname else dname
 
-    # Gather files to sanitize
     changes = {}  # (res_type, old_base) -> new_base
     renamed_count = 0
     for entry in os.listdir(res_dir):
@@ -831,16 +814,13 @@ def _sanitize_aapt_invalid_resources(workdir: str) -> int:
             for fn in files:
                 base, ext = os.path.splitext(fn)
                 old_base = base
-                # Allowed characters
                 new_base = re.sub(r'[^a-z0-9_.]', '_', old_base.lower())
-                # Must start with a letter
                 if not new_base or not new_base[0].isalpha():
                     new_base = 'x' + new_base
                 if new_base == old_base:
                     continue
                 src = os.path.join(root, fn)
                 dst = os.path.join(root, new_base + ext)
-                # Ensure uniqueness
                 if os.path.exists(dst):
                     suffix = 2
                     while os.path.exists(os.path.join(root, f"{new_base}_{suffix}{ext}")):
@@ -857,7 +837,6 @@ def _sanitize_aapt_invalid_resources(workdir: str) -> int:
     if not changes:
         return 0
 
-    # Update references in XML files
     def _rewrite_file(path: str):
         try:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -876,12 +855,10 @@ def _sanitize_aapt_invalid_resources(workdir: str) -> int:
             if fn.lower().endswith('.xml'):
                 _rewrite_file(os.path.join(root, fn))
 
-    # AndroidManifest.xml
     manifest_path = _find_manifest_file(workdir)
     if os.path.exists(manifest_path):
         _rewrite_file(manifest_path)
 
-    # Update values/public.xml if present
     public_xml = os.path.join(res_dir, 'values', 'public.xml')
     if os.path.exists(public_xml):
         try:
@@ -907,7 +884,6 @@ def _ensure_text_manifest(apktool_path: str, apk_path: str, workdir: str) -> str
         return manifest_path
     if _is_text_xml(manifest_path):
         return manifest_path
-    # Try apkanalyzer to dump text manifest
     try:
         apkanalyzer = shutil.which('apkanalyzer') or '/opt/android-sdk/cmdline-tools/latest/bin/apkanalyzer'
         if apkanalyzer and os.path.exists(apkanalyzer):
@@ -921,7 +897,6 @@ def _ensure_text_manifest(apktool_path: str, apk_path: str, workdir: str) -> str
                 log_to_fsr_logs(f"[GADGET] apkanalyzer failed: {pr.stderr or pr.stdout}")
     except Exception as e:
         log_to_fsr_logs(f"[GADGET] apkanalyzer manifest print failed: {e}")
-    # Fallback: secondary full decode and copy manifest
     try:
         tmp_dir = tempfile.mkdtemp(prefix='manifest_only_')
         _run_apktool_decode_full(apktool_path, apk_path, tmp_dir)
@@ -940,7 +915,6 @@ def _find_apktool_from_resources() -> str:
         candidates = []
         base = os.path.join('tools', 'resources')
         if os.path.isdir(base):
-            # Prefer specific jar names first
             for name in [
                 'apktool_2.12.1.jar',
                 'apktool_2.12.0.jar',
@@ -950,7 +924,6 @@ def _find_apktool_from_resources() -> str:
                 p = os.path.join(base, name)
                 if os.path.isfile(p):
                     candidates.append(p)
-            # Fallback to generic binaries
             for name in ['apktool', 'apktool.exe']:
                 p = os.path.join(base, name)
                 if os.path.isfile(p):
@@ -969,7 +942,6 @@ def _read_manifest_package(manifest_path: str) -> str:
             return pkg
     except Exception:
         pass
-    # Fallback to regex on plain text
     try:
         with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
             text = f.read()
@@ -993,13 +965,11 @@ def _detect_split_apk(manifest_path: str):
             lk = k.lower()
             if 'split' in lk or 'config' in lk:
                 split_attrs.append(f"{k}={v}")
-        # Check application presence
         has_app = False
         for child in root.iter():
             if child.tag.endswith('application'):
                 has_app = True
                 break
-        # Find MAIN/LAUNCHER activity
         main_act = _find_main_activity(manifest_path)
         if not has_app or not main_act:
             if split_attrs:
@@ -1130,21 +1100,18 @@ def _write_provider_smali(smali_dir: str, provider_class: str) -> bool:
 
 
 def _inject_provider_manifest(manifest_path: str, provider_class: str, authorities: str):
-    # First try XML-based approach
     try:
         ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
         tree = ET.parse(manifest_path)
         root = tree.getroot()
         android_ns = '{http://schemas.android.com/apk/res/android}'
         app = None
-        # Robustly find application element regardless of namespaces
         for child in root.iter():
             if child.tag.endswith('application'):
                 app = child
                 break
         if app is None:
             raise RuntimeError('application tag not found')
-        # Check if provider already exists
         for prov in app.iter():
             if not getattr(prov, 'tag', '').endswith('provider'):
                 continue
@@ -1160,7 +1127,6 @@ def _inject_provider_manifest(manifest_path: str, provider_class: str, authoriti
         return True, 'xml injection ok'
     except Exception as e:
         log_to_fsr_logs(f"[GADGET] XML inject provider failed: {e}. Trying text fallback")
-        # Fallback: plain-text injection before </application>
         try:
             with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
                 txt = f.read()
@@ -1178,14 +1144,12 @@ def _inject_provider_manifest(manifest_path: str, provider_class: str, authoriti
                 new_txt = txt[:pos] + snippet + txt[pos:]
                 method = 'inserted before </application>'
             else:
-                # Insert after <application ...>
                 m2 = re.search(r'<application[^>]*>', txt, re.IGNORECASE | re.DOTALL)
                 if m2:
                     pos = m2.end()
                     new_txt = txt[:pos] + '\n' + snippet + txt[pos:]
                     method = 'inserted after <application>'
                 else:
-                    # Heuristic: insert before first <provider> or <activity> inside application block
                     mp = re.search(r'<provider\b', txt, re.IGNORECASE)
                     if mp:
                         pos = mp.start()
@@ -1199,7 +1163,6 @@ def _inject_provider_manifest(manifest_path: str, provider_class: str, authoriti
                             method = 'inserted before first <activity>'
                         else:
                             raise RuntimeError('application tags not found for text injection (no <application>, <provider>, or <activity>)')
-            # Ensure xmlns:android exists
             if 'xmlns:android' not in new_txt:
                 new_txt = new_txt.replace('<manifest', '<manifest xmlns:android="http://schemas.android.com/apk/res/android"', 1)
             with open(manifest_path, 'w', encoding='utf-8') as f:
@@ -1219,7 +1182,6 @@ def _list_smali_roots(workdir: str):
                 roots.append(p)
     except Exception:
         pass
-    # Prefer plain 'smali' first
     roots.sort(key=lambda d: (0 if os.path.basename(d) == 'smali' else 1, d))
     return roots
 
@@ -1238,7 +1200,6 @@ def _find_main_activity(manifest_path: str) -> str:
                 break
         if app is None:
             raise RuntimeError('application not found while resolving main activity')
-        # Iterate regardless of namespaces
         for act in app.iter():
             if not getattr(act, 'tag', '').endswith('activity'):
                 continue
@@ -1267,13 +1228,11 @@ def _find_main_activity(manifest_path: str) -> str:
                 return name
     except Exception:
         pass
-    # Fallback: regex scan
     try:
         with open(manifest_path, 'r', encoding='utf-8', errors='ignore') as f:
             txt = f.read()
         import re
         pkg = _read_manifest_package(manifest_path) or ''
-        # crude: find first activity name
         m = re.search(r'<activity[^>]*android:name="([^"]+)"', txt)
         if m:
             name = m.group(1)
@@ -1302,19 +1261,16 @@ def _inject_oncreate_load_gadget(smali_file: str):
     try:
         with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
-        # Try to find existing onCreate
         start_idx = -1
         end_idx = -1
         locals_idx = -1
         for i, line in enumerate(lines):
             if line.strip().startswith('.method') and ' onCreate(' in line and ')V' in line:
                 start_idx = i
-                # find end of method
                 for j in range(i + 1, len(lines)):
                     if lines[j].strip().startswith('.end method'):
                         end_idx = j
                         break
-                # find .locals inside method
                 for j in range(i + 1, end_idx if end_idx != -1 else len(lines)):
                     if lines[j].strip().startswith('.locals'):
                         locals_idx = j
@@ -1325,7 +1281,6 @@ def _inject_oncreate_load_gadget(smali_file: str):
             '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
         ]
         if start_idx != -1 and end_idx != -1:
-            # ensure .locals >= 1
             if locals_idx != -1:
                 try:
                     parts = lines[locals_idx].strip().split()
@@ -1336,7 +1291,6 @@ def _inject_oncreate_load_gadget(smali_file: str):
                     lines[locals_idx] = lines[locals_idx].replace(str(n), '1')
             else:
                 lines.insert(start_idx + 1, '    .locals 1\n')
-            # insert before return-void (best-effort)
             insert_at = end_idx
             for k in range(end_idx - 1, start_idx, -1):
                 if lines[k].strip().startswith('return-void'):
@@ -1347,7 +1301,6 @@ def _inject_oncreate_load_gadget(smali_file: str):
                 f.writelines(lines)
             return True, 'patched existing onCreate'
         else:
-            # add a new onCreate
             new_method = (
                 '\n.method protected onCreate(Landroid/os/Bundle;)V\n'
                 '    .locals 1\n'
@@ -1514,7 +1467,6 @@ def _run_apktool_build(apktool_path: str, workdir: str, out_apk: str):
         base = ['java', '-jar', apktool_path, 'b', workdir, '-o', out_apk, '-f'] if apktool_lower.endswith('.jar') else [apktool_path, 'b', workdir, '-o', out_apk, '-f']
         return base + (['--use-aapt2'] if use_aapt2 else [])
 
-    # Attempt with aapt2
     cmd_aapt2 = _cmd(True)
     result = subprocess.run(cmd_aapt2, capture_output=True, text=True, timeout=900)
     if result.returncode == 0:
@@ -1523,7 +1475,6 @@ def _run_apktool_build(apktool_path: str, workdir: str, out_apk: str):
     out = (result.stderr or '') + ("\n" + result.stdout if result.stdout else '')
     log_to_fsr_logs(f"[GADGET][apktool] aapt2 build failed, will try aapt1 fallback: {out[:4000]}")
 
-    # Fallback to aapt1 (no --use-aapt2)
     cmd_aapt1 = _cmd(False)
     result2 = subprocess.run(cmd_aapt1, capture_output=True, text=True, timeout=900)
     if result2.returncode != 0:
@@ -1573,8 +1524,6 @@ def api_gadget_inject():
             fsize = -1
         log_to_fsr_logs(f"[GADGET] Saved to {upload_path} (size={fsize} bytes)")
 
-        # Ensure apktool is available in environment (classic path)
-        # Prefer a bundled tools/resources apktool jar if available
         apktool_path = _find_apktool_from_resources()
         if apktool_path:
             log_to_fsr_logs(f"[GADGET] Using bundled apktool: {apktool_path}")
@@ -1587,7 +1536,6 @@ def api_gadget_inject():
                 apktool_path = None
 
         if not apktool_path or not os.path.exists(apktool_path):
-            # As a last resort, rely on system PATH
             apktool_path = shutil.which('apktool')
         if not apktool_path:
             try:
@@ -1598,7 +1546,6 @@ def api_gadget_inject():
             return jsonify({'success': False, 'error': 'Apktool not found in environment. Use the provided Docker image or install apktool on host.'}), 400
         log_to_fsr_logs(f"[GADGET] Using apktool at: {apktool_path}")
 
-        # Working directory
         workdir = tempfile.mkdtemp(prefix='gadget_inject_')
         out_unsigned = os.path.join(workdir, 'gadget-injected-unsigned.apk')
         out_aligned = os.path.join(workdir, 'gadget-injected-aligned.apk')
@@ -1617,14 +1564,12 @@ def api_gadget_inject():
                 pass
             return response
 
-        # Decompile APK (full decode to keep resources + proper text manifest)
         try:
             _run_apktool_decode_full(apktool_path, upload_path, workdir)
         except Exception as e:
             raise RuntimeError(f'decompile failed: {e}')
         log_to_fsr_logs(f"[GADGET] Decompile OK -> {workdir}")
 
-        # Quick sanity on manifest to provide clearer guidance
         manifest_path = _find_manifest_file(workdir)
         if not os.path.exists(manifest_path):
             raise RuntimeError('AndroidManifest.xml not found after decompile')
@@ -1633,7 +1578,6 @@ def api_gadget_inject():
         if is_split:
             raise RuntimeError(f'APK appears to be a split (no base Application/Launcher). Details: {details}. Please use a base/universal APK.')
 
-        # Resolve gadget: prefer local cache when a specific version is requested
         lib_dir = os.path.join(workdir, 'lib', arch)
         os.makedirs(lib_dir, exist_ok=True)
         gadget_out = os.path.join(lib_dir, 'libfrida-gadget.so')
@@ -1645,7 +1589,6 @@ def api_gadget_inject():
             except Exception as e:
                 raise RuntimeError(f'Failed to obtain cached gadget {version} {arch}: {e}')
         else:
-            # Latest: fetch directly
             gadget_url = get_frida_gadget_url(arch, version)
             if not gadget_url:
                 raise RuntimeError(f'No frida-gadget asset found for arch {arch} version latest')
@@ -1663,7 +1606,6 @@ def api_gadget_inject():
             gsize = -1
         log_to_fsr_logs(f"[GADGET] Saved gadget to {gadget_out} (size={gsize} bytes)")
 
-        # Script selection: precedence upload > paste > repo selection
         chosen_script_content = None
         if 'script_file' in request.files and request.files['script_file'] and request.files['script_file'].filename:
             sf = request.files['script_file']
@@ -1682,11 +1624,9 @@ def api_gadget_inject():
                 chosen_script_content = None
                 log_to_fsr_logs(f"[GADGET] Script source: repo {script_choice} not found")
 
-        # If a script is chosen, place it next to gadget. Use .so suffix to ensure lib extraction on install.
         script_relname = None
         wrapped_source = None
         if chosen_script_content:
-            # Wrap uploaded script so syntax/runtime errors are logged instead of aborting Gadget
             try:
                 wrapped_source = (
                     "(function(){\n"
@@ -1725,11 +1665,9 @@ def api_gadget_inject():
                 sf.write(wrapped_source if wrapped_source.endswith('\n') else wrapped_source + '\n')
             log_to_fsr_logs(f"[GADGET] Wrote script to {script_abs}")
 
-        # Create Gadget config next to library (Android requires .config.so)
         config_path = os.path.join(lib_dir, 'libfrida-gadget.config.so')
         cfg = {}
         if chosen_script_content:
-            # Wrap uploaded script so syntax/runtime errors are logged instead of aborting Gadget
             try:
                 wrapped_source = (
                     "(function(){\n"
@@ -1762,13 +1700,11 @@ def api_gadget_inject():
             except Exception:
                 wrapped_source = chosen_script_content
 
-            # Use strict-compatible schema: put path on interaction (no top-level script)
             cfg['interaction'] = {
                 'type': 'script',
                 'path': script_relname
             }
         else:
-            # Provide explicit listen defaults for reliability when no script is embedded
             cfg['interaction'] = {
                 'type': 'listen',
                 'address': '127.0.0.1',
@@ -1778,7 +1714,6 @@ def api_gadget_inject():
             cf.write(json.dumps(cfg, indent=2))
         log_to_fsr_logs(f"[GADGET] Wrote gadget config to {config_path} (mode={'script' if chosen_script_content else 'listen'})")
 
-        # Inject startup hook only if autoload requested
         if autoload:
             smali_dir = _determine_smali_dir(workdir)
             if not smali_dir:
@@ -1792,11 +1727,9 @@ def api_gadget_inject():
                     raise RuntimeError('Failed to write Application smali')
                 log_to_fsr_logs("[GADGET] Autoload via new Application (no existing android:name)")
             else:
-                # App already defines android:name – try chaining with wrapper Application
                 base_app = _get_manifest_application_name(manifest_path)
                 log_to_fsr_logs(f"[GADGET] Existing Application detected: {base_app or '(none)'}")
                 if base_app:
-                    # If base Application is final, do NOT subclass; try ComponentFactory or Provider
                     is_final = _is_smali_class_final(_list_smali_roots(workdir), base_app)
                     if is_final:
                         log_to_fsr_logs(f"[GADGET] Base Application '{base_app}' is final; skipping wrapper and using alternatives")
@@ -2497,43 +2430,85 @@ def there_is_adb_and_devices():
     message = ""
 
     try:
-        result = run_adb_command(["adb", "devices"], timeout=2)
-        connected_devices = result.strip().split('\n')[1:]
-        device_ids = []
+        result = run_adb_command(["adb", "devices"], timeout=5)
         
-        for line in connected_devices:
-            if line.strip():
-                parts = line.split('\t')
-                if len(parts) >= 2:
-                    device_id = parts[0].strip()
-                    state = parts[1].strip()
-                    if state == "device":
-                        device_ids.append(device_id)
-
-        if device_ids:
-            for device_id in device_ids:
-                try:
-                    quick_check = run_adb_command(["adb", "-s", device_id, "shell", "echo", "test"], timeout=2)
-                    if "test" not in quick_check:
-                        continue
-                    
-                    model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"], timeout=2)
-                    serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"], timeout=2)
-                    versi_andro = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"], timeout=2)
-                    
-                    available_devices.append({
-                        "device_id": device_id, 
-                        "model": model.strip() if model else "Unknown", 
-                        "serial_number": serial_number.strip() if serial_number else "N/A", 
-                        "versi_andro": versi_andro.strip() if versi_andro else "N/A"
-                    })
-                except Exception as e:
-                    continue
+        if result and result.strip().startswith("Error:"):
+            log_to_fsr_logs(f"[DEBUG] ADB devices command returned error: {result}")
+            message = f"ADB command failed: {result}"
+        else:
+            lines = result.strip().split('\n') if result else []
+            connected_devices = lines[1:] if len(lines) > 1 else []
+            device_ids = []
             
-            if available_devices:
-                adb_is_active = True
-                message = "Device is available"
+            for line in connected_devices:
+                if line.strip():
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        device_id = parts[0].strip()
+                        state = parts[1].strip()
+                        if state == "device":
+                            device_ids.append(device_id)
+
+            if device_ids:
+                for device_id in device_ids:
+                    device_added = False
+                    try:
+                        quick_check = run_adb_command(["adb", "-s", device_id, "shell", "echo", "test"], timeout=5)
+                        if quick_check and not quick_check.strip().startswith("Error:") and "test" in quick_check:
+                            try:
+                                model = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.product.model"], timeout=5)
+                            except:
+                                model = None
+                            
+                            try:
+                                serial_number = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.serialno"], timeout=5)
+                            except:
+                                serial_number = None
+                            
+                            try:
+                                versi_andro = run_adb_command(["adb", "-s", device_id, "shell", "getprop", "ro.build.version.release"], timeout=5)
+                            except:
+                                versi_andro = None
+                            
+                            model_val = model.strip() if model and not model.strip().startswith("Error:") else "Unknown"
+                            serial_val = serial_number.strip() if serial_number and not serial_number.strip().startswith("Error:") else device_id
+                            versi_val = versi_andro.strip() if versi_andro and not versi_andro.strip().startswith("Error:") else "N/A"
+                            
+                            available_devices.append({
+                                "device_id": device_id, 
+                                "model": model_val, 
+                                "serial_number": serial_val, 
+                                "versi_andro": versi_val
+                            })
+                            device_added = True
+                        else:
+                            log_to_fsr_logs(f"[DEBUG] Device {device_id} quick check failed, but adding with minimal info")
+                            available_devices.append({
+                                "device_id": device_id, 
+                                "model": "Unknown", 
+                                "serial_number": device_id, 
+                                "versi_andro": "N/A"
+                            })
+                            device_added = True
+                    except Exception as e:
+                        log_to_fsr_logs(f"[DEBUG] Error processing device {device_id}: {e}, adding with minimal info")
+                        if not device_added:
+                            available_devices.append({
+                                "device_id": device_id, 
+                                "model": "Unknown", 
+                                "serial_number": device_id, 
+                                "versi_andro": "N/A"
+                            })
+                
+                if available_devices:
+                    adb_is_active = True
+                    message = f"{len(available_devices)} device(s) available"
+                else:
+                    message = "Devices detected but failed to get device info"
+            else:
+                message = "No devices in 'device' state found"
     except Exception as e:
+        log_to_fsr_logs(f"[ERROR] Exception in there_is_adb_and_devices: {e}")
         message = f"Error checking Android device connectivity: {e}"
     
     if not adb_is_active:
@@ -3054,7 +3029,6 @@ def apk_download():
     try:
         os.makedirs('tmp', exist_ok=True)
 
-        # Get all APK paths (base + splits) for the package
         raw_output = subprocess.check_output(
             f"adb shell pm path {package_name}",
             shell=True,
@@ -3065,7 +3039,6 @@ def apk_download():
         lines = [ln.strip() for ln in (raw_output or '').split('\n') if ln.strip()]
         apk_remote_paths = []
         for ln in lines:
-            # Expected format: "package:/data/app/.../base.apk"
             if ':' in ln:
                 path = ln.split(':', 1)[1].strip()
                 if path:
@@ -3076,10 +3049,8 @@ def apk_download():
 
         safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
 
-        # If only one APK (no split), keep previous single-APK behavior
         if len(apk_remote_paths) == 1:
             apk_path = apk_remote_paths[0]
-            # Determine filename
             if custom_name:
                 base_name = re.sub(r'\.apk$', '', custom_name, flags=re.IGNORECASE)
                 apk_filename = f"{base_name}.apk"
@@ -3119,7 +3090,6 @@ def apk_download():
                 _cleanup_single()
             return resp
 
-        # Otherwise, handle split APKs: pull all and zip them
         timestamp = int(time.time())
         work_dir = os.path.join('tmp', f"{safe_package}_{timestamp}")
         os.makedirs(work_dir, exist_ok=True)
@@ -3135,12 +3105,10 @@ def apk_download():
                 text=True
             )
             if pr.returncode != 0 or not os.path.exists(local_path) or (os.path.exists(local_path) and os.path.getsize(local_path) == 0):
-                # Best-effort: clean up and report error
                 shutil.rmtree(work_dir, ignore_errors=True)
                 return f"Failed to pull split APK '{name}': {pr.stderr or pr.stdout}", 500
             pulled_files.append(local_path)
 
-        # Create zip archive containing all APKs
         if custom_name:
             zip_name_root = re.sub(r'\.(apk|zip)$', '', custom_name, flags=re.IGNORECASE)
         else:
@@ -3152,7 +3120,6 @@ def apk_download():
         import zipfile
         with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for f in pulled_files:
-                # Store files with their basename inside the archive
                 zf.write(f, arcname=os.path.basename(f))
 
         resp = send_file(
@@ -3396,7 +3363,6 @@ def run_frida_with_socketio(script_path, package, frida_extra_args:str = ""):
 
     try:
         frida_output_buffer = []
-        # Build frida command with optional extra args
         command = ["frida", "-l", script_path, "-U", "-f", package]
         extra_args_list = []
         if frida_extra_args:
@@ -3404,15 +3370,12 @@ def run_frida_with_socketio(script_path, package, frida_extra_args:str = ""):
                 import shlex
                 extra_args_list = shlex.split(frida_extra_args)
             except Exception:
-                # Fallback simple split if shlex fails for any reason
                 extra_args_list = [arg for arg in frida_extra_args.split(" ") if arg]
         if extra_args_list:
             command.extend(extra_args_list)
 
-        # Save last command for reference and emit it to the Frida Logs UI
         last_frida_command = " ".join(
             [
-                # Quote arguments with spaces for readability
                 (f'"{c}"' if (" " in c and not c.startswith("\"")) else c)
                 for c in command
             ]
@@ -3463,7 +3426,6 @@ def send_frida_input():
         if user_input is None:
             user_input = ''
 
-        # Ensure newline so CLI processes the command
         with process_input_lock:
             try:
                 process.stdin.write(user_input + "\n")
@@ -3471,7 +3433,6 @@ def send_frida_input():
             except Exception as e:
                 return jsonify({"success": False, "error": f"Failed to send input: {e}"}), 500
 
-        # Optionally echo what was sent into the Frida Logs
         socketio.emit("output", {"data": f"[INPUT] {user_input}\n"})
         return jsonify({"success": True})
     except Exception as e:
@@ -4758,25 +4719,57 @@ def sslpindetect_page():
     """Render SSL Pinning Detection page"""
     return render_template('sslpindetect.html')
 
+@app.route('/sslpindec/packages', methods=['GET'])
+def sslpindetect_packages():
+    """Get list of installed Android packages for SSL pinning detection"""
+    try:
+        adb_check = there_is_adb_and_devices()
+        if not adb_check["is_true"]:
+            return jsonify({
+                'success': False,
+                'error': 'No Android devices connected',
+                'packages': []
+            }), 400
+        
+        android_devices = [d for d in adb_check.get('available_devices', []) if 'device_id' in d]
+        if not android_devices:
+            return jsonify({
+                'success': False,
+                'error': 'No Android devices found',
+                'packages': []
+            }), 400
+        
+        device_id = android_devices[0].get('device_id')
+        result = get_adb_packages(device_id)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'packages': result.get('packages', []),
+                'device_id': device_id
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Failed to get packages'),
+                'packages': []
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error getting packages: {str(e)}',
+            'packages': []
+        }), 500
+
 @app.route('/sslpindec/analyze', methods=['POST'])
 def sslpindetect_analyze():
-    """Analyze APK for SSL pinning"""
+    """Analyze APK for SSL pinning - supports both upload and package selection"""
     try:
         from sslpindetect import SSLPinDetector
         
-        if 'apkFile' not in request.files:
-            return jsonify({'success': False, 'error': 'No APK file uploaded'}), 400
-        
-        file = request.files['apkFile']
-        if file.filename == '':
-            return jsonify({'success': False, 'error': 'No file selected'}), 400
-        
-        if not file.filename.endswith('.apk'):
-            return jsonify({'success': False, 'error': 'Only APK files are allowed'}), 400
-        
         apktool_path = request.form.get('apktool_path', '').strip()
         if not apktool_path:
-            from sslpindetect import SSLPinDetector
             detector_temp = SSLPinDetector()
             apktool_path = detector_temp._find_apktool()
         
@@ -4786,24 +4779,81 @@ def sslpindetect_analyze():
                 'error': 'Apktool not found. Please specify the path to apktool (supports .jar, .exe, or binary).\n\nCommon locations:\n- apktool.jar (requires Java)\n- apktool.exe (Windows)\n- apktool (Linux/Mac binary)\n\nYou can download apktool from: https://ibotpeaches.github.io/Apktool/'
             }), 400
         
-        filename = secure_filename(file.filename)
-        apk_path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(apk_path)
+        verbose = request.form.get('verbose', 'false').lower() == 'true'
+        apk_path = None
+        downloaded_apk = False
+        
+        package_name = request.form.get('package_name', '').strip()
+        
+        if package_name:
+            try:
+                adb_check = there_is_adb_and_devices()
+                if not adb_check["is_true"]:
+                    return jsonify({
+                        'success': False,
+                        'error': 'No Android devices connected'
+                    }), 400
+                
+                android_devices = [d for d in adb_check.get('available_devices', []) if 'device_id' in d]
+                if not android_devices:
+                    return jsonify({
+                        'success': False,
+                        'error': 'No Android devices found'
+                    }), 400
+                
+                device_id = android_devices[0].get('device_id')
+                
+                detector = SSLPinDetector(apktool_path=apktool_path)
+                
+                safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
+                apk_path = os.path.join(UPLOAD_FOLDER, f'{safe_package}_sslpindetect.apk')
+                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+                
+                log_to_fsr_logs(f"[SSLPINDETECT] Downloading APK for package: {package_name}")
+                downloaded_path = detector.download_apk_from_package(package_name, device_id, apk_path)
+                apk_path = downloaded_path
+                downloaded_apk = True
+                log_to_fsr_logs(f"[SSLPINDETECT] APK downloaded to: {apk_path}")
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to download APK from package: {str(e)}'
+                }), 500
+        
+        else:
+            if 'apkFile' not in request.files:
+                return jsonify({'success': False, 'error': 'No APK file uploaded and no package selected'}), 400
+            
+            file = request.files['apkFile']
+            if file.filename == '':
+                return jsonify({'success': False, 'error': 'No file selected'}), 400
+            
+            if not file.filename.endswith('.apk'):
+                return jsonify({'success': False, 'error': 'Only APK files are allowed'}), 400
+            
+            filename = secure_filename(file.filename)
+            apk_path = os.path.join(UPLOAD_FOLDER, filename)
+            file.save(apk_path)
         
         try:
             detector = SSLPinDetector(apktool_path=apktool_path)
-            
-            verbose = request.form.get('verbose', 'false').lower() == 'true'
             result = detector.detect_ssl_pinning(apk_path, verbose=verbose)
             
-            if os.path.exists(apk_path):
-                os.remove(apk_path)
+            if downloaded_apk and os.path.exists(apk_path):
+                try:
+                    os.remove(apk_path)
+                except Exception:
+                    pass
             
             return jsonify(result)
             
         except Exception as e:
-            if os.path.exists(apk_path):
-                os.remove(apk_path)
+            if downloaded_apk and os.path.exists(apk_path):
+                try:
+                    os.remove(apk_path)
+                except Exception:
+                    pass
             return jsonify({
                 'success': False,
                 'error': f'Analysis failed: {str(e)}'
