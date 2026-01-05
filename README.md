@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) ![platform](https://img.shields.io/badge/OS-osx%2Flinux%2Fwindows-green.svg)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-orange.svg)](https://github.com/z3n70/Frida-Script-Runner) [![python](https://img.shields.io/badge/python-3.x.x-blue.svg?logo=python&labelColor=yellow)](https://www.python.org/downloads/)
 
-**[View Complete Documentation →](https://z3n70.github.io/Frida-Script-Runner/docs.html)**
+**[View Complete Documentation →](http://fsr.pwn.so/index.html)**
 
 ---
 
@@ -48,7 +48,10 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 ---
 ##  Video Tutorials
 
-### FSR AI
+### FSR - New Version and Other Features
+[![Video Thumbnail](https://img.youtube.com/vi/oSC3LPBSi8k/0.jpg)](https://www.youtube.com/watch?v=oSC3LPBSi8k)
+
+### FSR - AI
 [![Video Thumbnail](https://img.youtube.com/vi/T0spn-H2qvo/0.jpg)](https://www.youtube.com/watch?v=T0spn-H2qvo)
 
 ### Server Manager & Inject Frida Gadget
@@ -234,7 +237,7 @@ Contributions welcome! Please read our [Contributing Guidelines](.github/CONTRIB
 - [Karjok](https://github.com/karjok) - [Yudha](https://github.com/Yudha-ard)
 - [Hasyim](https://github.com/xcapri) - [Alfan](https://github.com/alfanilham)
 - [Irvan W](https://github.com/IrvanWijayaSardam) - [Yudha](https://github.com/Yudha-ard)
-- [Revan](https://github.com/revan-ar) - [Leo](https://github.com/leoferaderonugraha)
+- [Revan](https://github.com/revan-ar) - [Leyoh](https://github.com/leoferaderonugraha)
 
 ---
 
