@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frida Script Runner - Complete Documentation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+            --success-color: #198754;
+            --dark-bg: #212529;
+            --light-bg: #f8f9fa;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 80px 0;
+            margin-bottom: 50px;
+        }
+        
+        .hero-section h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        
+        .hero-section p {
+            font-size: 1.3rem;
+            opacity: 0.9;
+        }
+        
+        .feature-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: none;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            height: 100%;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .feature-icon {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 40px;
+            color: #2c3e50;
+            border-bottom: 3px solid var(--primary-color);
+            padding-bottom: 15px;
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        
+        .code-block code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .badge-feature {
+            font-size: 0.85rem;
+            padding: 8px 12px;
+            margin: 5px;
+        }
+        
+        .table-responsive {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .table thead {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .sidebar {
+            position: sticky;
+            top: 20px;
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .sidebar ul li {
+            margin: 10px 0;
+        }
+        
+        .sidebar ul li a {
+            color: #333;
+            text-decoration: none;
+            padding: 8px 15px;
+            display: block;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar ul li a:hover {
+            background: var(--light-bg);
+            color: var(--primary-color);
+            padding-left: 20px;
+        }
+        
+        .alert-custom {
+            border-left: 4px solid;
+            border-radius: 5px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        
+        .alert-info-custom {
+            background: #e7f3ff;
+            border-color: #2196F3;
+            color: #0d47a1;
+        }
+        
+        .alert-warning-custom {
+            background: #fff3cd;
+            border-color: #ff9800;
+            color: #856404;
+        }
+        
+        .alert-success-custom {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        
+        .architecture-diagram {
+            background: var(--light-bg);
+            padding: 30px;
+            border-radius: 10px;
+            margin: 30px 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .footer {
+            background: var(--dark-bg);
+            color: white;
+            padding: 40px 0;
+            margin-top: 80px;
+        }
+        
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .back-to-top:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+        }
+        
+        @media (max-width: 768px) {
+            .hero-section h1 {
+                font-size: 2rem;
+            }
+            
+            .hero-section p {
+                font-size: 1rem;
+            }
+            
+            .section-title {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#"><i class="bi bi-terminal"></i> Frida Script Runner</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#overview">Overview</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#features">Features</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#installation">Installation</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#usage">Usage</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#api">API</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#troubleshooting">Help</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container text-center">
+            <h1><i class="bi bi-shield-check"></i> Frida Script Runner</h1>
+            <p class="lead">Powerful web-based toolkit for Android & iOS penetration testing and mobile security analysis</p>
+            <p class="mt-3">
+                <span class="badge bg-light text-dark me-2">v1.0.0</span>
+                <span class="badge bg-light text-dark me-2">Android & iOS</span>
+                <span class="badge bg-light text-dark me-2">AI-Powered</span>
+                <span class="badge bg-light text-dark">Open Source</span>
+            </p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="row">
+            <!-- Sidebar Navigation -->
+            <div class="col-lg-3 d-none d-lg-block">
+                <div class="sidebar">
+                    <h5 class="fw-bold mb-3">Quick Navigation</h5>
+                    <ul>
+                        <li><a href="#overview"><i class="bi bi-house"></i> Overview</a></li>
+                        <li><a href="#features"><i class="bi bi-star"></i> Features</a></li>
+                        <li><a href="#core-functionality"><i class="bi bi-gear"></i> Core Functionality</a></li>
+                        <li><a href="#ai-features"><i class="bi bi-robot"></i> AI Features</a></li>
+                        <li><a href="#app-management"><i class="bi bi-phone"></i> App Management</a></li>
+                        <li><a href="#advanced-tools"><i class="bi bi-tools"></i> Advanced Tools</a></li>
+                        <li><a href="#installation"><i class="bi bi-download"></i> Installation</a></li>
+                        <li><a href="#usage"><i class="bi bi-book"></i> Usage Guide</a></li>
+                        <li><a href="#architecture"><i class="bi bi-diagram-3"></i> Architecture</a></li>
+                        <li><a href="#api"><i class="bi bi-code-slash"></i> API Reference</a></li>
+                        <li><a href="#troubleshooting"><i class="bi bi-question-circle"></i> Troubleshooting</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-lg-9">
+                <!-- Overview -->
+                <section id="overview" class="mb-5">
+                    <h2 class="section-title">Overview</h2>
+                    <p class="lead">
+                        Frida Script Runner is a comprehensive web-based toolkit designed to simplify mobile application security analysis 
+                        and penetration testing for both Android and iOS platforms. It provides a user-friendly interface through Flask 
+                        to enhance the efficiency of security testing tasks.
+                    </p>
+                    
+                    <div class="alert alert-info-custom alert-custom">
+                        <h5><i class="bi bi-info-circle"></i> What is Frida Script Runner?</h5>
+                        <p class="mb-0">
+                            This tool simplifies the process of interacting with Frida, a dynamic instrumentation toolkit. 
+                            It features AI-powered script generation through Codex CLI integration with MCP (Model Context Protocol) 
+                            servers for advanced binary analysis, making it easier than ever to analyze, manipulate, and interact 
+                            with mobile applications.
+                        </p>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Key Capabilities</h3>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card feature-card h-100">
+                                <div class="card-body">
+                                    <i class="bi bi-terminal feature-icon"></i>
+                                    <h5>Script Execution</h5>
+                                    <p>Execute custom Frida scripts on Android and iOS applications with real-time output monitoring.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card feature-card h-100">
+                                <div class="card-body">
+                                    <i class="bi bi-robot feature-icon"></i>
+                                    <h5>AI Script Generation</h5>
+                                    <p>Generate Frida scripts automatically using AI with advanced prompt engineering and binary analysis.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card feature-card h-100">
+                                <div class="card-body">
+                                    <i class="bi bi-download feature-icon"></i>
+                                    <h5>APK/IPA Extraction</h5>
+                                    <p>Dump APK (Android) and IPA (iOS) files directly from connected devices.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card feature-card h-100">
+                                <div class="card-body">
+                                    <i class="bi bi-shield-lock feature-icon"></i>
+                                    <h5>Security Analysis</h5>
+                                    <p>Detect SSL pinning, bypass root/jailbreak detection, and analyze app security.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Features -->
+                <section id="features" class="mb-5">
+                    <h2 class="section-title">Features</h2>
+                    
+                    <div id="core-functionality">
+                        <h3 class="mt-4 mb-3"><i class="bi bi-gear-fill"></i> Core Functionality</h3>
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-play-circle text-primary"></i> Run Frida Scripts</h5>
+                                        <p>Execute custom Frida scripts on selected mobile applications to analyze and manipulate their behavior. 
+                                        Support for both Android and iOS platforms with real-time script execution monitoring.</p>
+                                        <ul>
+                                            <li>Select from pre-built bypass scripts</li>
+                                            <li>Run custom scripts via text input</li>
+                                            <li>Real-time output streaming</li>
+                                            <li>Frida REPL command support</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-arrow-repeat text-success"></i> Real-time Output</h5>
+                                        <p>View real-time output generated by the Frida process, allowing instant feedback on script execution. 
+                                        Monitor logs, errors, and script results as they happen.</p>
+                                        <ul>
+                                            <li>Live log streaming</li>
+                                            <li>Separate FSR and Frida logs</li>
+                                            <li>Terminal-style interface</li>
+                                            <li>Clear and filter capabilities</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-folder text-info"></i> Script Organization</h5>
+                                        <p>Organize Frida scripts into different directories for efficient management and easy selection. 
+                                        Separate directories for Android and iOS scripts.</p>
+                                        <ul>
+                                            <li>Script Directory 1: Android scripts</li>
+                                            <li>Script Directory 2: iOS scripts</li>
+                                            <li>JSON-based script metadata</li>
+                                            <li>Searchable script list</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-code-square text-warning"></i> Custom Scripting</h5>
+                                        <p>Easily create and run custom Frida scripts by copy-pasting the script code directly into the tool. 
+                                        No need to save files - just paste and run.</p>
+                                        <ul>
+                                            <li>Direct script input</li>
+                                            <li>Frida Codeshare integration</li>
+                                            <li>Script validation</li>
+                                            <li>Auto-fix capabilities</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ai-features" class="mt-5">
+                        <h3 class="mt-4 mb-3"><i class="bi bi-robot"></i> AI-Powered Script Generation 🤖</h3>
+                        <div class="alert alert-success-custom alert-custom">
+                            <h5><i class="bi bi-lightning-charge"></i> Advanced AI Integration</h5>
+                            <p class="mb-0">
+                                Generate Frida scripts automatically using natural language prompts. The AI system uses Codex CLI 
+                                with MCP (Model Context Protocol) servers for real-time binary analysis and reverse engineering.
+                            </p>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-cpu text-primary"></i> Codex CLI Integration</h5>
+                                        <p>Generate Frida scripts using the Codex CLI with advanced prompt engineering. 
+                                        The system understands your requirements and generates optimized scripts automatically.</p>
+                                        <ul>
+                                            <li>Natural language prompts</li>
+                                            <li>Context-aware generation</li>
+                                            <li>Multi-turn conversations</li>
+                                            <li>Prompt refinement tools</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-server text-success"></i> MCP Server Support</h5>
+                                        <p>Access Ghidra and JADX MCP servers for real-time binary analysis and reverse engineering. 
+                                        Get accurate function names, addresses, and binary structure information.</p>
+                                        <ul>
+                                            <li>Ghidra MCP Server integration</li>
+                                            <li>JADX MCP Server for APK analysis</li>
+                                            <li>Real-time binary analysis</li>
+                                            <li>Function signature extraction</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-check-circle text-info"></i> Frida API Compatibility</h5>
+                                        <p>AI-generated scripts use only compatible functions from the official Frida JavaScript API. 
+                                        Ensures scripts work correctly with your Frida version.</p>
+                                        <ul>
+                                            <li>Official API compliance</li>
+                                            <li>Version compatibility checks</li>
+                                            <li>Error handling included</li>
+                                            <li>Best practices enforced</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-phone text-warning"></i> ARM Android Optimization</h5>
+                                        <p>Scripts are specifically optimized for ARM Android devices with proper stability patterns. 
+                                        Includes ARM-specific error handling and memory management.</p>
+                                        <ul>
+                                            <li>ARM architecture support</li>
+                                            <li>Stability patterns included</li>
+                                            <li>Memory leak prevention</li>
+                                            <li>Performance optimization</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-12 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-flask text-danger"></i> Interactive Script Tester</h5>
+                                        <p>Test and refine your prompts with the built-in Codex Bridge web interface. 
+                                        Accessible at <code>http://localhost:8091</code> when the bridge is running.</p>
+                                        <ul>
+                                            <li>Web-based testing interface</li>
+                                            <li>Real-time script generation</li>
+                                            <li>Prompt history and refinement</li>
+                                            <li>Export generated scripts</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="app-management" class="mt-5">
+                        <h3 class="mt-4 mb-3"><i class="bi bi-phone"></i> Application Management</h3>
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-download text-primary"></i> Dump APK/IPA From Device</h5>
+                                        <p>Extract APK (Android) or IPA (iOS) files from connected devices by selecting installed packages. 
+                                        Supports both regular and split APKs.</p>
+                                        <ul>
+                                            <li>Android APK extraction</li>
+                                            <li>iOS IPA decryption and extraction</li>
+                                            <li>Split APK support (downloads as ZIP)</li>
+                                            <li>Custom filename options</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-search text-success"></i> Searchable Package List</h5>
+                                        <p>Quickly find target applications via live search functionality in the package selector. 
+                                        Real-time filtering as you type.</p>
+                                        <ul>
+                                            <li>Live search filtering</li>
+                                            <li>Package name matching</li>
+                                            <li>Quick refresh capability</li>
+                                            <li>Device-specific packages</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-file-earmark text-info"></i> Custom Filename Option</h5>
+                                        <p>Define a custom name for the dumped APK/IPA instead of using the default package name. 
+                                        Makes organization easier for multiple versions.</p>
+                                        <ul>
+                                            <li>Custom naming for APKs</li>
+                                            <li>Custom naming for IPAs</li>
+                                            <li>Version tracking support</li>
+                                            <li>Organized downloads</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-upload text-warning"></i> Install APK to Device</h5>
+                                        <p>Upload and install an APK file directly onto an Android device with a single click. 
+                                        Progress tracking and status updates included.</p>
+                                        <ul>
+                                            <li>Direct APK installation</li>
+                                            <li>Upload progress tracking</li>
+                                            <li>Installation status feedback</li>
+                                            <li>Error handling and reporting</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="advanced-tools" class="mt-5">
+                        <h3 class="mt-4 mb-3"><i class="bi bi-tools"></i> Advanced Tools</h3>
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-server text-primary"></i> Frida Server Management</h5>
+                                        <p>Manage Frida server installation and execution directly from the web interface. 
+                                        Start, stop, and monitor Frida server status for connected devices.</p>
+                                        <ul>
+                                            <li>Auto-detect Frida server</li>
+                                            <li>Start/stop server controls</li>
+                                            <li>Version checking</li>
+                                            <li>Force download option</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-hdd text-success"></i> Frida Gadget Manager</h5>
+                                        <p>Inject Frida Gadget into APK files for runtime instrumentation without root/jailbreak. 
+                                        Manage gadget versions and architectures.</p>
+                                        <ul>
+                                            <li>APK injection support</li>
+                                            <li>Multiple architecture support</li>
+                                            <li>Gadget version management</li>
+                                            <li>Cache management</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-shield-lock text-info"></i> SSL Pinning Detector</h5>
+                                        <p>Detect SSL pinning implementations in Android APKs. Analyze uploaded APKs or installed packages 
+                                        to identify SSL pinning mechanisms.</p>
+                                        <ul>
+                                            <li>APK upload analysis</li>
+                                            <li>Package-based analysis</li>
+                                            <li>Multiple detection methods</li>
+                                            <li>Detailed reporting</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-globe text-warning"></i> Mobile Proxy</h5>
+                                        <p>Configure Android device HTTP proxy settings via ADB. Set or clear global HTTP proxy 
+                                        for network traffic interception.</p>
+                                        <ul>
+                                            <li>HTTP proxy configuration</li>
+                                            <li>ADB-based setup</li>
+                                            <li>Clear proxy option</li>
+                                            <li>Quick configuration</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-share text-danger"></i> Frida Codeshare Integration</h5>
+                                        <p>Search and import Frida scripts from the Frida Codeshare repository. 
+                                        Access thousands of community-contributed scripts.</p>
+                                        <ul>
+                                            <li>Search Codeshare scripts</li>
+                                            <li>Import directly to editor</li>
+                                            <li>Script preview</li>
+                                            <li>Community scripts access</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card feature-card">
+                                    <div class="card-body">
+                                        <h5><i class="bi bi-terminal text-primary"></i> ADB GUI</h5>
+                                        <p>Graphical interface for ADB commands. Execute common ADB operations through 
+                                        a user-friendly web interface.</p>
+                                        <ul>
+                                            <li>Device management</li>
+                                            <li>Command execution</li>
+                                            <li>File operations</li>
+                                            <li>Log viewing</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-5">
+                        <h3 class="mt-4 mb-3"><i class="bi bi-list-check"></i> Pre-built Script Library</h3>
+                        <p>The tool includes an extensive library of pre-built Frida scripts for common security testing scenarios:</p>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5 class="mt-3">Android Scripts</h5>
+                                <ul>
+                                    <li><span class="badge badge-feature bg-primary">SSL Pinning Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-success">Root Detection Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-info">OkHttp SSL Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-warning">Flutter TLS Disable</span></li>
+                                    <li><span class="badge badge-feature bg-danger">Emulator Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-secondary">Biometric Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-dark">PIN Bypass</span></li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h5 class="mt-3">iOS Scripts</h5>
+                                <ul>
+                                    <li><span class="badge badge-feature bg-primary">Jailbreak Detection Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-success">SSL Pinning Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-info">TrustKit Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-warning">Flutter Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-danger">Biometric Bypass</span></li>
+                                    <li><span class="badge badge-feature bg-secondary">AFNetwork SSL Bypass</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Installation -->
+                <section id="installation" class="mb-5">
+                    <h2 class="section-title">Installation</h2>
+                    
+                    <h3 class="mt-4 mb-3">Prerequisites</h3>
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <div class="card">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0"><i class="bi bi-check-circle"></i> Required Software</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul>
+                                        <li><strong>Python 3.11.x</strong> (required)</li>
+                                        <li><strong>Flask</strong> (web framework)</li>
+                                        <li><strong>Frida</strong> (instrumentation toolkit)</li>
+                                        <li><strong>ADB</strong> (for Android)</li>
+                                        <li><strong>ideviceinfo</strong> (for iOS)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="card">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0"><i class="bi bi-star"></i> AI Features (Optional)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <ul>
+                                        <li><strong>Codex CLI</strong> (for AI script generation)</li>
+                                        <li><strong>Ghidra MCP Server</strong> (binary analysis)</li>
+                                        <li><strong>JADX MCP Server</strong> (APK analysis)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Device Requirements</h3>
+                    <div class="alert alert-warning-custom alert-custom">
+                        <h5><i class="bi bi-exclamation-triangle"></i> Important Requirements</h5>
+                        <ul class="mb-0">
+                            <li><strong>Android:</strong> Root access required for Frida server installation</li>
+                            <li><strong>iOS:</strong> Jailbroken device with Frida installed via Cydia/Sileo/Zebra</li>
+                        </ul>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Method 1: Native Installation</h3>
+                    <div class="code-block">
+                        <code># Clone the repository<br>
+git clone https://github.com/z3n70/Frida-Script-Runner.git<br>
+cd Frida-Script-Runner<br><br>
+# Install dependencies<br>
+pip3 install -r requirements.txt<br><br>
+# Run the application<br>
+python3.11 frida_script.py<br><br>
+# Access the web interface<br>
+# http://127.0.0.1:5000</code>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Method 2: Docker Installation</h3>
+                    <div class="code-block">
+                        <code># Build and run with Docker Compose<br>
+docker-compose up --build<br><br>
+# Start Codex Bridge (for AI features)<br>
+# On host machine (Windows/Linux/macOS)<br>
+python codex-bridge.py<br><br>
+# Access the applications<br>
+# Frida Script Runner: http://localhost:5000<br>
+# Codex Bridge Tester: http://localhost:8091</code>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">AI Setup (Optional)</h3>
+                    <p>If you want to use AI-powered script generation:</p>
+                    <ol>
+                        <li><strong>Install Codex CLI:</strong> Follow the <a href="https://platform.openai.com/docs/quickstart" target="_blank">Codex CLI setup guide</a></li>
+                        <li><strong>Configure MCP Servers:</strong>
+                            <ul>
+                                <li>Set up Ghidra MCP server for binary analysis</li>
+                                <li>Configure JADX MCP server for APK analysis</li>
+                                <li>Update paths in <code>codex-bridge.py</code> if needed</li>
+                                <li>Copy <code>.config.toml.example</code> to <code>.config.toml</code> and adjust MCP server paths</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </section>
+
+                <!-- Usage -->
+                <section id="usage" class="mb-5">
+                    <h2 class="section-title">Usage Guide</h2>
+                    
+                    <h3 class="mt-4 mb-3">Basic Usage</h3>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5>1. Device Setup</h5>
+                            <ul>
+                                <li>Connect your USB device and enable USB debugging (Android) or trust the computer (iOS)</li>
+                                <li>For Android: Ensure device is rooted and Frida server is installed</li>
+                                <li>For iOS: Ensure device is jailbroken with Frida installed via Cydia/Sileo/Zebra</li>
+                                <li>Start Frida server from the web interface if needed</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5>2. Run Scripts</h5>
+                            <ol>
+                                <li>Open the web interface at <code>http://127.0.0.1:5000</code></li>
+                                <li>Select the target package from the dropdown</li>
+                                <li>Choose a pre-built script or enter custom script code</li>
+                                <li>Click "Run Frida" to start the Frida process</li>
+                                <li>View real-time output in the output container</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5>3. Script Management</h5>
+                            <ul>
+                                <li><strong>Android scripts:</strong> Place in <code>scripts/Script Directory 1/</code></li>
+                                <li><strong>iOS scripts:</strong> Place in <code>scripts/Script Directory 2/</code></li>
+                                <li>See <code>static/data/script.json</code> for structure and naming conventions</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">AI-Powered Script Generation</h3>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5>Using the Web Interface</h5>
+                            <ol>
+                                <li>Navigate to the main interface</li>
+                                <li>Select "Auto Generate Script" from the script dropdown</li>
+                                <li>Enter your request in natural language (e.g., "Hook the login function and log parameters")</li>
+                                <li>Click "Generate Script" to create a custom Frida script</li>
+                                <li>Review and run the generated script</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5>Example Prompts</h5>
+                            <ul>
+                                <li><code>"Intercept SSL pinning bypass for Android app"</code></li>
+                                <li><code>"Hook Java method com.example.App.authenticate and modify return value"</code></li>
+                                <li><code>"Monitor file operations and log file paths"</code></li>
+                                <li><code>"Hook the main function and log all parameters"</code></li>
+                                <li><code>"Bypass root detection in RootBeer library"</code></li>
+                                <li><code>"Hook native function strcmp in libc.so"</code></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Advanced Features</h3>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5><i class="bi bi-diagram-3"></i> Binary Analysis</h5>
+                                    <p>AI can access Ghidra/JADX data for accurate function names and addresses, making script generation more precise.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5><i class="bi bi-tools"></i> Auto-Fix</h5>
+                                    <p>Scripts automatically include ARM stability patterns and error handling for better reliability.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5><i class="bi bi-arrow-repeat"></i> Real-time Analysis</h5>
+                                    <p>MCP servers provide live binary analysis during script generation, ensuring up-to-date information.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Architecture -->
+                <section id="architecture" class="mb-5">
+                    <h2 class="section-title">Architecture</h2>
+                    <div class="architecture-diagram">
+                        <pre>┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│   Web Interface     │    │  Codex Bridge       │    │   MCP Servers       │
+│   (Flask App)       │◄───┤  (AI Integration)   │◄───┤  (Binary Analysis)  │
+│                     │    │                     │    │                     │
+│ • Script Runner     │    │ • Codex CLI Proxy   │    │ • Ghidra Server     │
+│ • Package Manager   │    │ • Prompt Engineering│    │ • JADX Server       │
+│ • Real-time Output  │    │ • MCP Client        │    │ • Function Analysis │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+           │
+           ▼
+┌─────────────────────┐    ┌─────────────────────┐
+│   Frida Runtime     │    │   Mobile Device     │
+│                     │◄───┤                     │
+│ • Script Execution  │    │ • Android (rooted)  │
+│ • Instrumentation   │    │ • iOS (jailbroken)  │
+│ • Memory Analysis   │    │ • Running Apps      │
+└─────────────────────┘    └─────────────────────┘</pre>
+                    </div>
+                    <p class="mt-3">
+                        The architecture consists of four main components:
+                    </p>
+                    <ol>
+                        <li><strong>Web Interface (Flask App):</strong> Provides the user interface and handles HTTP requests</li>
+                        <li><strong>Codex Bridge:</strong> Acts as a proxy between the web interface and Codex CLI, handling AI script generation</li>
+                        <li><strong>MCP Servers:</strong> Provide binary analysis capabilities through Ghidra and JADX integrations</li>
+                        <li><strong>Frida Runtime:</strong> Executes scripts on connected mobile devices</li>
+                    </ol>
+                </section>
+
+                <!-- API Reference -->
+                <section id="api" class="mb-5">
+                    <h2 class="section-title">API Reference</h2>
+                    
+                    <h3 class="mt-4 mb-3">Frida Script Runner Endpoints</h3>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Method</th>
+                                    <th>Endpoint</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-primary">GET</span></td>
+                                    <td><code>/</code></td>
+                                    <td>Main web interface</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/run_frida</code></td>
+                                    <td>Execute Frida script</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/generate-frida-script</code></td>
+                                    <td>AI script generation</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/get_packages</code></td>
+                                    <td>List device packages</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/dump_apk</code></td>
+                                    <td>Extract APK/IPA files</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/dump-ipa</code></td>
+                                    <td>Extract IPA files from iOS device</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/apk-download</code></td>
+                                    <td>Download APK from Android device</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Codex Bridge Endpoints</h3>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Method</th>
+                                    <th>Endpoint</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge bg-primary">GET</span></td>
+                                    <td><code>/health</code></td>
+                                    <td>Bridge health check</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-success">POST</span></td>
+                                    <td><code>/generate-script</code></td>
+                                    <td>Generate Frida script</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge bg-primary">GET</span></td>
+                                    <td><code>/</code></td>
+                                    <td>Interactive tester interface</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Troubleshooting -->
+                <section id="troubleshooting" class="mb-5">
+                    <h2 class="section-title">Troubleshooting</h2>
+                    
+                    <h3 class="mt-4 mb-3">Common Issues</h3>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Empty AI Response</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul>
+                                <li>Ensure Codex CLI is properly installed and authenticated</li>
+                                <li>Check that the bridge is using the correct command format (<code>--file</code> and <code>--prompt</code>)</li>
+                                <li>Verify timeout settings (5 minutes default)</li>
+                                <li>Check Codex Bridge logs for errors</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Frida Server Connection Failed</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul>
+                                <li>Verify device is rooted (Android) or jailbroken (iOS)</li>
+                                <li>Ensure Frida server is running with proper permissions</li>
+                                <li>Check ADB/USB debugging connection</li>
+                                <li>Try restarting Frida server from the web interface</li>
+                                <li>Verify Frida server version matches Frida client version</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-info-circle"></i> MCP Server Issues</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul>
+                                <li>Update MCP server paths in <code>codex-bridge.py</code></li>
+                                <li>Ensure Ghidra/JADX servers are running and accessible</li>
+                                <li>Check network connectivity and firewall settings</li>
+                                <li>Verify MCP server configuration in <code>.config.toml</code></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header bg-secondary text-white">
+                            <h5 class="mb-0"><i class="bi bi-docker"></i> Docker Issues</h5>
+                        </div>
+                        <div class="card-body">
+                            <ul>
+                                <li>Ensure bridge is running on host machine</li>
+                                <li>Verify port forwarding (5000 for app, 8091 for bridge)</li>
+                                <li>Check Docker networking configuration</li>
+                                <li>Ensure host network access is properly configured</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3 class="mt-4 mb-3">Performance Tips</h3>
+                    <div class="alert alert-info-custom alert-custom">
+                        <ul class="mb-0">
+                            <li>Use the Codex Bridge Tester to refine prompts before production use</li>
+                            <li>Enable MCP servers for more accurate script generation</li>
+                            <li>Monitor ARM-specific patterns in generated scripts</li>
+                            <li>Use 5-minute timeout for complex binary analysis requests</li>
+                            <li>Keep Frida server updated to match client version</li>
+                            <li>Clear Frida server cache if experiencing connection issues</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Contributing -->
+                <section id="contributing" class="mb-5">
+                    <h2 class="section-title">Contributing</h2>
+                    <p>Contributions are welcome! Here's how you can help:</p>
+                    <ol>
+                        <li><strong>Fork the repository</strong> and create a feature branch</li>
+                        <li><strong>Test thoroughly</strong> on both Android and iOS devices</li>
+                        <li><strong>Document new features</strong> in README and code comments</li>
+                        <li><strong>Follow coding standards</strong> and maintain compatibility</li>
+                        <li><strong>Submit pull requests</strong> with clear descriptions</li>
+                    </ol>
+                    <p class="mt-3">
+                        <strong>Contact the maintainer:</strong> 
+                        <a href="https://x.com/zenalarifin_" target="_blank">@zenalarifin_</a>
+                    </p>
+                </section>
+
+                <!-- License -->
+                <section id="license" class="mb-5">
+                    <h2 class="section-title">License</h2>
+                    <p>This project is licensed under the <strong>MIT License</strong> - see the <a href="https://github.com/z3n70/Frida-Script-Runner/blob/main/LICENSE" target="_blank">LICENSE</a> file for details.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container text-center">
+            <h4>Frida Script Runner</h4>
+            <p>Made with ❤️ for the mobile security community</p>
+            <p class="mb-0">
+                <a href="https://github.com/z3n70/Frida-Script-Runner" target="_blank" class="text-white me-3">
+                    <i class="bi bi-github"></i> GitHub
+                </a>
+                <a href="https://secrash.com" target="_blank" class="text-white">
+                    <i class="bi bi-globe"></i> Secrash
+                </a>
+            </p>
+            <p class="mt-3 mb-0"><small>© 2025 Secrash. All rights reserved.</small></p>
+        </div>
+    </footer>
+
+    <!-- Back to Top Button -->
+    <div class="back-to-top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+        <i class="bi bi-arrow-up"></i>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Show/hide back to top button
+        window.addEventListener('scroll', function() {
+            const backToTop = document.querySelector('.back-to-top');
+            if (window.pageYOffset > 300) {
+                backToTop.style.display = 'flex';
+            } else {
+                backToTop.style.display = 'none';
+            }
+        });
+
+        // Highlight active section in sidebar
+        window.addEventListener('scroll', function() {
+            const sections = document.querySelectorAll('section[id]');
+            const navLinks = document.querySelectorAll('.sidebar a[href^="#"]');
+            
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.pageYOffset >= sectionTop - 200) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + current) {
+                    link.classList.add('active');
+                    link.style.background = 'var(--light-bg)';
+                    link.style.color = 'var(--primary-color)';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
