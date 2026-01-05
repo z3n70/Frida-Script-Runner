@@ -3,22 +3,18 @@
 
 echo "🔧 Setting up ADB for Docker environment..."
 
-# Check if ADB is installed on host
 if ! command -v adb &> /dev/null; then
     echo "❌ ADB is not installed on host system"
     echo "Please install Android SDK Platform Tools first"
     exit 1
 fi
 
-# Start ADB server on host
 echo "🚀 Starting ADB server on host..."
 adb start-server
 
-# List connected devices
 echo "📱 Checking for connected devices..."
 adb devices -l
 
-# Check if any devices are connected
 DEVICE_COUNT=$(adb devices | grep -v "List of devices" | grep -c "device")
 
 if [ $DEVICE_COUNT -eq 0 ]; then
@@ -35,7 +31,6 @@ if [ $DEVICE_COUNT -eq 0 ]; then
 else
     echo "✅ Found $DEVICE_COUNT connected device(s)"
     
-    # For each connected device, show network setup option
     adb devices | grep "device" | while read line; do
         DEVICE_ID=$(echo $line | awk '{print $1}')
         if [ "$DEVICE_ID" != "List" ]; then

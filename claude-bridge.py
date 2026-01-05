@@ -33,11 +33,9 @@ def load_env_file(env_path='.env'):
     except Exception as e:
         print(f"[BRIDGE] Warning: Could not load {env_path}: {e}")
 
-# Global variables
 CLAUDE_EXECUTABLE = None
 MCP_CONFIG = None
 
-# Configuration (can be overridden via environment variables or command line)
 DEFAULT_CONFIG = {
     'ghidra_bridge_path': os.environ.get('GHIDRA_BRIDGE_PATH', 'D:/Irvan/Work/MCP/GhidraMCPFrida/bridge_mcp_ghidra.py'),
     'ghidra_server_url': os.environ.get('GHIDRA_SERVER_URL', 'http://127.0.0.1:8080/'),
@@ -49,18 +47,15 @@ DEFAULT_CONFIG = {
     'bridge_port': int(os.environ.get('BRIDGE_PORT', '8090'))
 }
 
-# Runtime configuration (will be updated from args/env)
 CONFIG = DEFAULT_CONFIG.copy()
 
 def find_claude_executable():
     """Find Claude CLI executable on Windows/Linux/Mac"""
     global CLAUDE_EXECUTABLE
     
-    # Try common command names with actual execution test
     for cmd in ['claude', 'claude.exe']:
         full_path = shutil.which(cmd)
         if full_path:
-            # Test if it actually works
             try:
                 result = subprocess.run([full_path, '--version'], 
                                       capture_output=True, text=True, timeout=5)
@@ -70,7 +65,6 @@ def find_claude_executable():
             except:
                 continue
     
-    # Try common installation paths on Windows
     if sys.platform.startswith('win'):
         username = os.environ.get('USERNAME', 'User')
         windows_paths = [
@@ -83,7 +77,6 @@ def find_claude_executable():
         
         for path in windows_paths:
             if os.path.exists(path):
-                # Test if it actually works
                 try:
                     result = subprocess.run([path, '--version'], 
                                           capture_output=True, text=True, timeout=5)
@@ -93,7 +86,6 @@ def find_claude_executable():
                 except:
                     continue
     
-    # Try common paths on Unix-like systems
     else:
         unix_paths = [
             "/usr/local/bin/claude",
@@ -104,7 +96,6 @@ def find_claude_executable():
         
         for path in unix_paths:
             if os.path.exists(path):
-                # Test if it actually works
                 try:
                     result = subprocess.run([path, '--version'], 
                                           capture_output=True, text=True, timeout=5)
@@ -120,17 +111,14 @@ def find_mcp_servers():
     """Find and configure MCP servers for Claude CLI"""
     global MCP_CONFIG
     
-    # Check environment variable for MCP config
     env_mcp_config = os.environ.get('CLAUDE_MCP_CONFIG')
     if env_mcp_config:
         print(f"[BRIDGE] Using MCP config from environment: {env_mcp_config}")
         MCP_CONFIG = env_mcp_config
         return MCP_CONFIG
     
-    # Specific MCP server configurations (based on user's setup)
     mcp_servers = {}
     
-    # Check for Ghidra MCP server
     ghidra_bridge_path = CONFIG['ghidra_bridge_path']
     if os.path.exists(ghidra_bridge_path):
         print(f"[BRIDGE] Found Ghidra MCP server at: {ghidra_bridge_path}")
@@ -143,7 +131,6 @@ def find_mcp_servers():
             ]
         }
     
-    # Check for JADX MCP server
     jadx_server_path = CONFIG['jadx_server_path']
     uv_path = CONFIG['uv_executable']
     
@@ -161,11 +148,9 @@ def find_mcp_servers():
             ]
         }
     
-    # If we found any MCP servers, create config
     if mcp_servers:
         mcp_config = {"mcpServers": mcp_servers}
         
-        # Save to temp file
         import tempfile
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(mcp_config, f, indent=2)
@@ -174,18 +159,16 @@ def find_mcp_servers():
             print(f"[BRIDGE] Found {len(mcp_servers)} MCP servers: {list(mcp_servers.keys())}")
             return MCP_CONFIG
     
-    # Check if user has Claude MCP config directory
     claude_config_dir = None
-    if os.name == 'nt':  # Windows
+    if os.name == 'nt':
         claude_config_dir = os.path.expanduser("~\\AppData\\Roaming\\Claude\\mcp_servers")
-    else:  # Unix-like
+    else:
         claude_config_dir = os.path.expanduser("~/.config/claude/mcp_servers")
     
     if claude_config_dir and os.path.exists(claude_config_dir):
-        # Look for existing MCP server configs
         config_files = glob.glob(os.path.join(claude_config_dir, "*.json"))
         if config_files:
-            MCP_CONFIG = config_files[0]  # Use first found config
+            MCP_CONFIG = config_files[0]
             print(f"[BRIDGE] Using existing Claude MCP config: {MCP_CONFIG}")
             return MCP_CONFIG
     
@@ -221,7 +204,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                 self.send_json_response(503, response)
                 return
                 
-            # Check if Claude CLI is available
             result = subprocess.run([CLAUDE_EXECUTABLE, '--version'], 
                                   capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
@@ -577,7 +559,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
         try:
             print("[BRIDGE] Received generate-script request")
             
-            # Read request body
             content_length = int(self.headers.get('Content-Length', 0))
             print(f"[BRIDGE] Request content length: {content_length}")
             
@@ -594,9 +575,8 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             
             prompt = data['prompt']
             print(f"[BRIDGE] Prompt length: {len(prompt)} characters")
-            print(f"[BRIDGE] Original prompt: {prompt[:200]}...")  # Show first 200 chars
+            print(f"[BRIDGE] Original prompt: {prompt[:200]}...")
             
-            # Use the user's prompt directly - CLAUDE.md will provide the detailed instructions
             formatted_prompt = prompt
             
             try:
@@ -609,26 +589,21 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                     self.send_json_response(500, response)
                     return
                     
-                # Try Claude CLI with MCP first, fallback to plain Claude
                 result = None
                 
-                # Create temporary file for prompt (matching frida_script.py approach)
                 import tempfile
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as temp_file:
                     temp_file.write(formatted_prompt)
                     temp_file.flush()
                     temp_prompt_path = temp_file.name
                 
-                # Method 1: Try with MCP if available
                 global MCP_CONFIG
                 if MCP_CONFIG:
                     print(f"[BRIDGE] Trying Claude CLI with MCP config: {MCP_CONFIG}")
                     try:
-                        # Read the prompt from the temp file and pass it directly
                         with open(temp_prompt_path, 'r') as f:
                             file_content = f.read()
                         
-                        # Print the complete final prompt for debugging
                         print(f"[BRIDGE] ==================== FINAL PROMPT (MCP) ====================")
                         print(file_content)
                         print(f"[BRIDGE] ============================================================")
@@ -637,14 +612,14 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                             CLAUDE_EXECUTABLE, 
                             '--mcp-config', MCP_CONFIG,
                             '--dangerously-skip-permissions',
-                            '--print',  # For non-interactive output
+                            '--print',
                             file_content
                         ]
                         result = subprocess.run(
                             cmd_args,
                             capture_output=True,
                             text=True,
-                            timeout=600,  # 10 minutes timeout for MCP
+                            timeout=600,
                             cwd=os.getcwd(),
                             encoding='utf-8',
                             errors='replace'
@@ -659,27 +634,24 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                         print(f"[BRIDGE] MCP method exception: {e}")
                         result = None
                 
-                # Method 2: Fallback to plain Claude CLI
                 if not result:
                     print(f"[BRIDGE] Falling back to plain Claude CLI...")
                     try:
-                        # Read the prompt from the temp file and pass it directly
                         with open(temp_prompt_path, 'r') as f:
                             file_content = f.read()
                         
-                        # Print the complete final prompt for debugging
                         print(f"[BRIDGE] ==================== FINAL PROMPT (Plain) ====================")
                         print(file_content)
                         print(f"[BRIDGE] =============================================================")
                         
                         result = subprocess.run([
                             CLAUDE_EXECUTABLE,
-                            '--print',  # For non-interactive output 
+                            '--print',
                             file_content
                         ], 
                         capture_output=True, 
                         text=True, 
-                        timeout=600,  # 10 minutes timeout
+                        timeout=600,
                         cwd=os.getcwd(),
                         encoding='utf-8',
                         errors='replace')
@@ -692,7 +664,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                         print(f"[BRIDGE] Plain Claude CLI exception: {e}")
                         result = None
                 
-                # Clean up temp file
                 try:
                     os.unlink(temp_prompt_path)
                 except:
@@ -706,7 +677,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                     self.send_json_response(500, response)
                     return
                 
-                # Process successful result
                 print(f"[BRIDGE] Claude CLI return code: {result.returncode}")
                 print(f"[BRIDGE] Claude CLI stdout length: {len(result.stdout) if result.stdout else 0}")
                 print(f"[BRIDGE] Claude CLI stderr: {result.stderr[:200] if result.stderr else 'None'}")
@@ -714,16 +684,13 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                 if result.returncode == 0:
                     raw_output = result.stdout.strip()
 
-                    # Log the AI response for debugging
                     print(f"[BRIDGE] ==================== AI RESPONSE ====================")
                     print(f"[BRIDGE] Raw Claude Output:")
                     print(raw_output)
                     print(f"[BRIDGE] =====================================================")
 
-                    # Try to find and read any generated JavaScript files first
                     generated_script = self.find_and_read_generated_script(raw_output)
 
-                    # If no files found, extract from response text
                     if not generated_script:
                         generated_script = self.extract_javascript_code(raw_output)
 
@@ -774,7 +741,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
         temp_file = "temp_generated.js"
         print(f"[BRIDGE] Looking for expected temp file: {temp_file}")
 
-        # First try the expected file name
         if os.path.exists(temp_file):
             try:
                 print(f"[BRIDGE] Found expected temp file: {temp_file}")
@@ -787,10 +753,8 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"[BRIDGE] Error reading {temp_file}: {e}")
 
-        # Fallback: Look for any JS files mentioned in Claude's output or recently created
         print(f"[BRIDGE] Expected file not found, searching for alternative JS files...")
 
-        # Extract file names from Claude's output
         file_patterns = [
             r'`([^`]+\.js)`',
             r'"([^"]+\.js)"',
@@ -805,7 +769,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             matches = re.findall(pattern, claude_output, re.IGNORECASE)
             potential_files.extend(matches)
 
-        # Also search for recently created JS files
         search_patterns = ["*.js", "scripts/*.js", "temp/*.js"]
         for pattern in search_patterns:
             try:
@@ -816,20 +779,17 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
 
         print(f"[BRIDGE] Found potential JS files: {potential_files}")
 
-        # Try to read the most recently created JS file that looks like Frida script
-        for filename in set(potential_files):  # Remove duplicates
+        for filename in set(potential_files):
             try:
                 if os.path.exists(filename):
                     print(f"[BRIDGE] Checking file: {filename}")
                     with open(filename, 'r', encoding='utf-8') as f:
                         content = f.read().strip()
 
-                    # Verify it looks like a Frida script
                     if content and any(indicator in content for indicator in ['Java.perform', 'console.log', 'Interceptor.attach']):
                         print(f"[BRIDGE] Found valid Frida script in: {filename}")
                         print(f"[BRIDGE] Successfully read {len(content)} chars from {filename}")
 
-                        # Copy to expected location for future consistency
                         try:
                             with open(temp_file, 'w', encoding='utf-8') as f:
                                 f.write(content)
@@ -850,13 +810,11 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
         """Extract JavaScript code from Claude's response, supporting structured format"""
         import re
 
-        # Priority 1: Extract from structured response format (===FRIDA-SCRIPT=== blocks)
         frida_script_pattern = r'===FRIDA-SCRIPT===(.*?)===FRIDA-SCRIPT==='
         structured_match = re.search(frida_script_pattern, text, re.DOTALL | re.IGNORECASE)
 
         if structured_match:
             script_content = structured_match.group(1).strip()
-            # Remove any markdown code block markers
             script_content = re.sub(r'^```(?:javascript|js)?\n?', '', script_content)
             script_content = re.sub(r'\n?```$', '', script_content)
             script_content = script_content.strip()
@@ -864,7 +822,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             if script_content and any(js_indicator in script_content for js_indicator in ['Java.perform', 'console.log', 'Interceptor.attach', 'Java.use']):
                 return script_content
 
-        # Priority 2: Extract complete Java.perform blocks with proper brace counting
         java_perform_pattern = r'Java\.perform\(function\(\) \{'
         start_match = re.search(java_perform_pattern, text)
 
@@ -875,16 +832,14 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             brace_count = 0
 
             for line in lines:
-                # Skip obvious non-JavaScript lines
                 if any(marker in line for marker in ['##', '**', 'Perfect!', 'Based on', 'Here\'s what', 'The Code You Need']):
-                    if js_lines:  # Only break if we've collected some JS
+                    if js_lines:
                         break
                     continue
 
                 js_lines.append(line)
                 brace_count += line.count('{') - line.count('}')
 
-                # Stop when we have a complete Java.perform block
                 if brace_count == 0 and len(js_lines) > 1:
                     break
 
@@ -893,7 +848,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
                 if result.endswith('});'):
                     return result
 
-        # Priority 3: Look for JavaScript code blocks in markdown
         js_pattern = r'```(?:javascript|js)\n(.*?)\n```'
         matches = re.findall(js_pattern, text, re.DOTALL | re.IGNORECASE)
 
@@ -901,8 +855,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             if 'Java.perform' in match:
                 return match.strip()
 
-        # Priority 4: Generate a basic hook script from analysis if no JS found
-        # If Claude didn't provide JS but gave analysis, create a template
         if not any(js_indicator in text for js_indicator in ['Java.perform', 'console.log', 'Interceptor.attach', 'Java.use']):
             return """Java.perform(function() {
     console.log("[+] Frida script started");
@@ -917,11 +869,9 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
     // };
 });"""
 
-        # Priority 5: Generate a working script from found JavaScript-like content
         lines = text.split('\n')
         js_content = []
 
-        # Look for any JavaScript-like content and build a script
         for line in lines:
             if any(js_indicator in line for js_indicator in ['console.log', 'Interceptor.attach', 'Java.use', 'setTimeout']):
                 js_content.append('    ' + line.strip())
@@ -933,7 +883,6 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
     console.log("[+] Script completed");
 }});"""
 
-        # Final fallback: Basic template with helpful message
         return """Java.perform(function() {
     console.log("[+] Frida script started");
     console.log("[!] No JavaScript code extracted from Claude response");
@@ -946,14 +895,12 @@ class ClaudeBridgeHandler(BaseHTTPRequestHandler):
             response_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
             print(f"[BRIDGE] JSON response size: {len(response_data)} bytes")
 
-            # Debug: Show first part of the script content
             if 'script' in data and data.get('script'):
                 script_preview = data['script'][:100].replace('\n', '\\n')
                 print(f"[BRIDGE] Script preview: {script_preview}...")
 
         except Exception as e:
             print(f"[BRIDGE] JSON encoding error: {e}")
-            # Fallback with escaped content
             if 'script' in data:
                 data['script'] = data['script'].replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
             response_data = json.dumps(data, ensure_ascii=True).encode('utf-8')
@@ -1039,11 +986,9 @@ Examples:
     
     args = parser.parse_args()
     
-    # Load additional .env file if specified
     if args.env_file != '.env':
         load_env_file(args.env_file)
     
-    # Update CONFIG with command line arguments
     CONFIG['bridge_host'] = args.host
     CONFIG['bridge_port'] = args.port
     CONFIG['ghidra_bridge_path'] = args.ghidra_path
@@ -1065,10 +1010,8 @@ Examples:
     return args
 
 if __name__ == '__main__':
-    # Load .env file first (before parsing arguments)
     load_env_file()
     
-    # Parse command line arguments and update configuration
     args = parse_arguments()
     
     print("[FSR] Starting Claude CLI HTTP Bridge (No Dependencies)...")
@@ -1078,13 +1021,11 @@ if __name__ == '__main__':
     print("[WARN]  Make sure Claude CLI is installed and authenticated on this host")
     print()
     
-    # Find Claude CLI executable
     claude_cmd = find_claude_executable()
     if not claude_cmd:
         print("[ERROR] Claude CLI not found or not working")
         print("   Locations checked:")
         
-        # Show what was found by shutil.which
         for cmd in ['claude', 'claude.exe']:
             which_result = shutil.which(cmd)
             if which_result:
@@ -1092,7 +1033,6 @@ if __name__ == '__main__':
             else:
                 print(f"   - '{cmd}' not found in PATH")
         
-        # Show Windows paths checked
         if sys.platform.startswith('win'):
             username = os.environ.get('USERNAME', 'User')
             windows_paths = [
@@ -1118,14 +1058,12 @@ if __name__ == '__main__':
     
     print(f"[OK] Claude CLI found at: {claude_cmd}")
     
-    # Find and configure MCP servers
     mcp_config_path = find_mcp_servers()
     if mcp_config_path:
         print(f"[OK] MCP servers configured")
     else:
         print(f"[WARN]  No MCP servers found - using plain Claude CLI")
     
-    # Get version info
     try:
         result = subprocess.run([claude_cmd, '--version'], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
@@ -1135,7 +1073,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"[WARN]  Warning: Could not get version: {e}")
     
-    # Check available options
     print("[CHECK] Checking Claude CLI options...")
     try:
         help_result = subprocess.run([claude_cmd, '--help'], capture_output=True, text=True, timeout=5)
@@ -1155,7 +1092,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"[WARN]  Could not check options: {e}")
     
-    # Start HTTP server
     server_address = (CONFIG['bridge_host'], CONFIG['bridge_port'])
     httpd = HTTPServer(server_address, ClaudeBridgeHandler)
     

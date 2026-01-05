@@ -1,9 +1,8 @@
 Java.perform(function () {
     console.log("[+] Frida script started");
 
-    var TARGET_LIB = "libhellojni.so"; // System.loadLibrary("hellojni")
+    var TARGET_LIB = "libhellojni.so"; 
     var OFFSETS = {
-        // Fallback offsets from Ghidra in case export lookup fails
         sesame: 0x0010100c,
         basil: 0x00101624,
         unscramble: 0x00101958,
@@ -12,8 +11,6 @@ Java.perform(function () {
         dataLen: 0x27
     };
 
-    // Derived password from com.hellocmu.picoctf.FlagstaffHill.getFlag
-    // witches = ["weatherwax","ogg","garlick","nitt","aching","dismass"]
     var knownPassword = "dismass.ogg.weatherwax.aching.nitt.garlick";
 
     function safeReadCString(ptrVal) {
@@ -114,7 +111,6 @@ Java.perform(function () {
                     onLeave: function (retval) {
                         try {
                             console.log("[+] basil(original) -> " + retval);
-                            // Force success to bypass check if desired
                             retval.replace(ptr(1));
                             console.log("[+] basil(forced) -> 1");
                         } catch (e) {
@@ -202,7 +198,6 @@ Java.perform(function () {
                 var name = namePtr && !namePtr.isNull() ? namePtr.readCString() : null;
                 if (!name) return;
                 if (name.indexOf(libName) !== -1) {
-                    // Delay to ensure initialization
                     setTimeout(function () {
                         try {
                             var baseNow = Module.getBaseAddress(libName);
@@ -250,7 +245,6 @@ Java.perform(function () {
             var out = this.getFlag(s, ctx);
             try { console.log("[JAVA] getFlag(return): " + out); } catch (e) {}
             try {
-                // Also compute via known password for verification
                 var forced = this.getFlag(knownPassword, ctx);
                 console.log("[JAVA] getFlag(forcedKnownPassword): " + forced);
             } catch (e) {
@@ -279,7 +273,6 @@ Java.perform(function () {
         console.log("[!] Java hook setup error (MainActivity.buttonClick): " + e);
     }
 
-    // Wait for libhellojni.so and then set up native hooks
     waitForLibrary(TARGET_LIB, function (base) {
         try { Module.ensureInitialized(TARGET_LIB); } catch (e) {}
         setupNativeHooks(base);

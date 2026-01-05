@@ -175,7 +175,6 @@ class SSLPinDetector:
         try:
             apktool_lower = self.apktool_path.lower()
             
-            # Try to install framework-res.apk if provided
             if framework_apk_path and os.path.exists(framework_apk_path):
                 if apktool_lower.endswith('.jar'):
                     cmd = ['java', '-jar', self.apktool_path, 'if', framework_apk_path]
@@ -219,7 +218,6 @@ class SSLPinDetector:
             
             apktool_lower = self.apktool_path.lower()
             
-            # Build base command
             if apktool_lower.endswith('.jar'):
                 base_cmd = ['java', '-jar', self.apktool_path, 'd', apk_path, '-o', output_dir]
             elif apktool_lower.endswith(('.exe', '.bat')):
@@ -227,14 +225,11 @@ class SSLPinDetector:
             else:
                 base_cmd = [self.apktool_path, 'd', apk_path, '-o', output_dir]
             
-            # Add flags
             if use_no_res:
-                # Use --no-res to skip resources (only decode smali)
                 cmd = base_cmd + ['-f', '--no-res', '--no-assets']
                 if verbose:
                     print("Using --no-res flag to skip resources (framework files not required)")
             else:
-                # Try normal decode first
                 cmd = base_cmd + ['-f']
             
             result = subprocess.run(
@@ -251,14 +246,11 @@ class SSLPinDetector:
             else:
                 error_msg = result.stderr or result.stdout
                 
-                # Check if it's a framework error and we haven't tried --no-res yet
                 if self._is_framework_error(error_msg) and not use_no_res:
                     if verbose:
                         print("Framework error detected, retrying with --no-res flag...")
-                    # Try again with --no-res flag (this skips resources but still decodes smali)
                     return self.decompile_apk(apk_path, output_dir, use_no_res=True, verbose=verbose)
                 
-                # Provide helpful error message for framework errors
                 if self._is_framework_error(error_msg):
                     framework_help = (
                         "\n\nApktool requires framework files to decode this APK.\n"
@@ -281,7 +273,6 @@ class SSLPinDetector:
                 raise RuntimeError("Java not found. Please install Java to use apktool.jar")
             raise RuntimeError(f"Apktool not found: {str(e)}")
         except RuntimeError:
-            # Re-raise RuntimeError as-is (includes our helpful messages)
             raise
         except Exception as e:
             raise RuntimeError(f"Error decompiling APK: {str(e)}")
@@ -366,7 +357,6 @@ class SSLPinDetector:
         """
         import subprocess
         
-        # Get APK path from device
         cmd = ['adb']
         if device_serial:
             cmd.extend(['-s', device_serial])
@@ -387,7 +377,6 @@ class SSLPinDetector:
             if not lines:
                 raise RuntimeError(f"Package {package_name} not found on device")
             
-            # Get first APK path (base APK)
             apk_remote_path = None
             for line in lines:
                 if ':' in line:
@@ -399,18 +388,14 @@ class SSLPinDetector:
             if not apk_remote_path:
                 raise RuntimeError(f"Could not find APK path for package {package_name}")
             
-            # Determine output path
             if not output_path:
                 safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
-                # Use tmp/uploads directory (same as UPLOAD_FOLDER in frida_script.py)
                 upload_folder = os.path.join('tmp', 'uploads')
                 os.makedirs(upload_folder, exist_ok=True)
                 output_path = os.path.join(upload_folder, f'{safe_package}.apk')
             
-            # Ensure output directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Pull APK from device
             pull_cmd = ['adb']
             if device_serial:
                 pull_cmd.extend(['-s', device_serial])
