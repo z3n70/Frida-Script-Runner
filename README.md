@@ -6,7 +6,7 @@
 
 > **Powerful web-based for mobile Android & iOS penetration testing toolkit**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/z3n70/Frida-Script-Runner)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/z3n70/Frida-Script-Runner)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) ![platform](https://img.shields.io/badge/OS-osx%2Flinux%2Fwindows-green.svg)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-orange.svg)](https://github.com/z3n70/Frida-Script-Runner) [![python](https://img.shields.io/badge/python-3.x.x-blue.svg?logo=python&labelColor=yellow)](https://www.python.org/downloads/)
 
@@ -25,7 +25,7 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 
 ## Tech Graph
 <p align="center">
-  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/main/FSR_Tech%20Graph.png" width="800">
+  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/mc/new_features_frida_server_manager/FSR_Tech_Graph.png" width="800">
 </p>
 
 ---
