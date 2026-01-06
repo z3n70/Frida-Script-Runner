@@ -5,6 +5,7 @@ services:
       - "5000:5000"
     volumes:
       - ./scripts:/app/scripts
+      - ./frida-gadget:/app/frida-gadget
       - ./tmp:/app/tmp
       - ./frida-server:/app/frida-server
       - ./temp_generated.js:/app/temp_generated.js

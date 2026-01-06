@@ -119,6 +119,14 @@
 		"description":"SSL Pinning"
 		}
 	},
+
+	{"android_flutter_proxy.js" : 
+		{"category":"ANDROID",
+		"group" : "SSL",
+		"file_name":"android_flutter_proxy.js",
+		"description":"SSL Pinning"}
+	},
+
 	{"rootber.js" : {"category":"ANDROID",
 				"group" : "ROOT",
 				"file_name":"rootber.js",
@@ -323,17 +331,23 @@
 		"description":"SSL Pinning"
 		}
 	},
+	{"ios_flutter_proxy.js" : 
+		{"category":"IOS",
+		"group" : "SSL",
+		"file_name":"ios_flutter_proxy.js",
+		"description":"SSL Pinning"}
+	},
 	{"touchid-and-jb.js" : 
 				{"category":"IOS",
 				"group" : "ROOT",
 				"file_name":"touchid-and-jb.js",
 				"description":"iOS Biometric Bypass"}
-},
-{"ios-biometric.js" : 
-			{"category":"IOS",
-			"group" : "ROOT",
-			"file_name":"ios-biometric.js",
-			"description":"iOS Biometric Bypass"}
-}
+	},
+	{"ios-biometric.js" : 
+				{"category":"IOS",
+				"group" : "ROOT",
+				"file_name":"ios-biometric.js",
+				"description":"iOS Biometric Bypass"}
+	}
 	]
 }

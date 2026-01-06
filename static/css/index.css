@@ -244,6 +244,23 @@ div {
   word-break: break-word;
 }
 
+/* Sticky input area at the bottom of Frida Logs */
+.frida-input-sticky {
+  position: sticky;
+  bottom: 0;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(0px);
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+}
+
+/* Footer anchored to terminal-fsr bottom */
+.terminal-footer {
+  background: rgba(30, 30, 30, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0 0 10px 10px;
+}
+
 .circle-red, .circle-yellow, .circle-green {
   width: 12px;
   height: 12px;

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}
+    <title>Frida Script Runner | Mobile Proxy</title>
+{% endblock %}
+
+{% block body %}
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/no-usb.css') }}" class="rel">
+
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" alt="FSR Logo" class="dashboard-logo">
+            <h1 class="dashboard-title">Mobile Proxy</h1>
+            <p class="dashboard-subtitle">Configure Android device HTTP proxy via ADB</p>
+        </div>
+
+        <div class="dashboard-cards single-card">
+            <div class="dashboard-card active">
+                <div class="card-icon">
+                    <i class="bi bi-globe2"></i>
+                </div>
+                <h3 class="card-title">HTTP Proxy Settings</h3>
+                <p class="card-description">
+                    Set or clear the global HTTP proxy on the connected Android device using
+                    <code>adb shell settings put global http_proxy</code>.
+                </p>
+
+                <form id="proxyForm" class="proxy-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="proxyIp">Proxy IP</label>
+                            <select id="proxyIp"
+                                    name="ip"
+                                    class="form-control"
+                                    required>
+                                <option value="">-- Select local IP (ifconfig/ipconfig) --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="proxyPort">Proxy Port</label>
+                            <input type="number"
+                                   id="proxyPort"
+                                   name="port"
+                                   class="form-control"
+                                   placeholder="8080"
+                                   min="1"
+                                   max="65535"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="current-proxy">
+                        <span class="label">Current proxy on device:</span>
+                        {% if current_proxy and current_proxy.value %}
+                            <span id="currentProxyValue" class="value">{{ current_proxy.value }}</span>
+                        {% else %}
+                            <span id="currentProxyValue" class="value text-muted">Not set or unknown</span>
+                        {% endif %}
+                    </div>
+
+                    <div id="proxyMessage" class="proxy-message" style="display: none;"></div>
+
+                    <div class="button-row">
+                        <button type="button" class="btn btn-primary" id="setProxyBtn">
+                            <i class="bi bi-check-circle"></i> Set Proxy
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="unsetProxyBtn">
+                            <i class="bi bi-x-circle"></i> Unset Proxy
+                        </button>
+                        <a href="/" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Dashboard
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="dashboard-footer text-center mt-4 mb-3 w-100">
+            <a class="credit d-inline-block" href="https://secrash.com" target="_blank"><span>2025 © Secrash</span></a>
+          </div>
+    </div>
+
+    <script>
+        async function callProxyEndpoint(url, payload) {
+            const messageEl = document.getElementById('proxyMessage');
+            messageEl.style.display = 'block';
+            messageEl.className = 'proxy-message';
+            messageEl.textContent = 'Processing...';
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload || {})
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    messageEl.classList.add('success');
+                    messageEl.textContent = data.message || 'Operation successful';
+                    if (data.proxy !== undefined) {
+                        const currentProxy = document.getElementById('currentProxyValue');
+                        currentProxy.textContent = data.proxy === ':0' ? 'Not set' : data.proxy;
+                        currentProxy.classList.remove('text-muted');
+                    }
+                } else {
+                    messageEl.classList.add('error');
+                    messageEl.textContent = data.error || 'Operation failed';
+                }
+            } catch (e) {
+                messageEl.classList.add('error');
+                messageEl.textContent = 'Request failed: ' + e;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const setBtn = document.getElementById('setProxyBtn');
+            const unsetBtn = document.getElementById('unsetProxyBtn');
+            const ipSelect = document.getElementById('proxyIp');
+
+            // Load local IPs from backend (ifconfig/ipconfig)
+            fetch('/mobile-proxy/ips')
+                .then(resp => resp.json())
+                .then(data => {
+                    const messageEl = document.getElementById('proxyMessage');
+                    if (!data.success) {
+                        if (messageEl) {
+                            messageEl.style.display = 'block';
+                            messageEl.className = 'proxy-message error';
+                            messageEl.textContent = 'Failed to load IP list (ifconfig/ipconfig): ' + (data.error || '');
+                        }
+                        console.warn('Failed to load IP list:', data.error);
+                        return;
+                    }
+                    if (Array.isArray(data.ips) && data.ips.length > 0) {
+                        data.ips.forEach(item => {
+                            const opt = document.createElement('option');
+                            opt.value = item.ip;
+                            opt.textContent = item.label || item.ip;
+                            ipSelect.appendChild(opt);
+                        });
+                    } else if (messageEl) {
+                        messageEl.style.display = 'block';
+                        messageEl.className = 'proxy-message error';
+                        messageEl.textContent = 'No IP addresses found from ifconfig/ipconfig.';
+                    }
+                })
+                .catch(err => {
+                    const messageEl = document.getElementById('proxyMessage');
+                    if (messageEl) {
+                        messageEl.style.display = 'block';
+                        messageEl.className = 'proxy-message error';
+                        messageEl.textContent = 'Error fetching IP list: ' + err;
+                    }
+                    console.warn('Error fetching IP list:', err);
+                });
+
+            setBtn.addEventListener('click', function () {
+                const ip = ipSelect.value.trim();
+                const port = document.getElementById('proxyPort').value.trim();
+                if (!ip || !port) {
+                    const messageEl = document.getElementById('proxyMessage');
+                    messageEl.style.display = 'block';
+                    messageEl.className = 'proxy-message error';
+                    messageEl.textContent = 'Please select IP and fill Port first.';
+                    return;
+                }
+                callProxyEndpoint('/mobile-proxy/set', {ip, port});
+            });
+
+            unsetBtn.addEventListener('click', function () {
+                callProxyEndpoint('/mobile-proxy/unset', {});
+            });
+        });
+    </script>
+{% endblock %}
+
+

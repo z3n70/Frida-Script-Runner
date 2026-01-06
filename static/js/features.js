@@ -6,13 +6,14 @@ function filterOptions(searchInputId, selectId) {
     
     for (let i = 0; i < options.length; i++) {
       const txtValue = options[i].text || options[i].innerText;
-      options[i].style.display = txtValue.toUpperCase().includes(filter) ? "" : "none";
+      const match = txtValue.toUpperCase().includes(filter);
+      options[i].style.display = match ? "" : "none";
+      options[i].hidden = !match;
     }
 }
 
 // apk download
 document.getElementById('apkDownloadForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
     
     const form = e.target;
     const formData = new FormData(form);
@@ -20,6 +21,19 @@ document.getElementById('apkDownloadForm').addEventListener('submit', async func
     
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...';
+
+    const iframe = document.getElementById('download_frame');
+    let restored = false;
+    const restore = () => {
+        if (restored) return;
+        restored = true;
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-download"></i> Download APK';
+        iframe.removeEventListener('load', restore);
+    };
+    iframe.addEventListener('load', restore);
+    setTimeout(restore, 15000);
+    return;
     
     try {
         const response = await fetch(form.action, {
@@ -35,11 +49,24 @@ document.getElementById('apkDownloadForm').addEventListener('submit', async func
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        
-        const customName = formData.get('custom_name');
-        const packageName = formData.get('package');
-        const filename = customName ? `${customName.replace(/\.apk$/i, '')}.apk` : `${packageName}.apk`;
-        
+
+        let filename = null;
+        const disposition = response.headers.get('Content-Disposition');
+        if (disposition) {
+            const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+            if (match) {
+                filename = decodeURIComponent(match[1] || match[2]).trim();
+            }
+        }
+        if (!filename) {
+            const customName = formData.get('custom_name');
+            const packageName = formData.get('package');
+            const contentType = response.headers.get('Content-Type') || '';
+            const base = (customName ? customName.replace(/\.(apk|zip)$/i, '') : packageName);
+            const ext = contentType.includes('zip') ? '.zip' : '.apk';
+            filename = `${base}${ext}`;
+        }
+
         a.href = url;
         a.download = filename;
         document.body.appendChild(a);
@@ -153,7 +180,6 @@ document.getElementById('dumpIPAForm').addEventListener('submit', function(e) {
 
                 progressBar.style.width = '100%';
                 progressBar.classList.remove('progress-bar-animated');
-                // showStatus('IPA berhasil diunduh!', 'alert-success');
             }
         } else {
             const errorText = await response.text();
