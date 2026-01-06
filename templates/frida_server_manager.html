@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}
+<title>Frida Script Runner | Frida Server Manager</title>
+{% endblock %}
+
+{% block body %}
+<div class="container1">
+  <div class="justify-content-center logo">
+    <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" class="size-logo mt-3" alt="logo">
+    <h2 class="text-center white">Frida Server Manager</h2>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h2 class="h5 mb-0"><i class="bi bi-phone"></i> Connected Devices</h2>
+          <div>
+            <a class="btn btn-sm btn-outline-light" href="/">Back to Home</a>
+          </div>
+        </div>
+        <div class="card-body bg-white">
+          <div class="mb-3 p-2 border rounded bg-light">
+            <h3 class="h6 mb-2"><i class="bi bi-cpu"></i> Local Frida Client</h3>
+            <div id="localFridaInfo" class="small text-muted">
+              Loading local Frida info...
+            </div>
+          </div>
+          <div id="devicesContainer">
+            <div class="text-muted">Loading device info...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h2 class="h5 mb-0"><i class="bi bi-github"></i> Frida Releases</h2>
+          <button class="btn btn-sm btn-outline-light" id="refreshReleasesBtn">Refresh</button>
+        </div>
+        <div class="card-body bg-white">
+          <div class="mb-3">
+            <label class="form-label" for="releaseSelect">Choose Frida Version</label>
+            <select id="releaseSelect" class="form-select">
+              <option disabled selected>Loading releases...</option>
+            </select>
+            <small class="text-muted">Source: https://github.com/frida/frida/releases</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="targetDeviceSelect">Target Device</label>
+            <select id="targetDeviceSelect" class="form-select">
+              <option disabled selected>Loading devices...</option>
+            </select>
+          </div>
+          <div class="d-flex gap-2">
+            <button id="startWithVersionBtn" class="btn btn-success">
+              <i class="bi bi-play-fill"></i> Start with Selected Version
+            </button>
+            <button id="setDockerVersionBtn" class="btn btn-outline-primary">
+              <i class="bi bi-box"></i> Set Docker Client Version
+            </button>
+            <button id="refreshDevicesBtn" class="btn btn-outline-secondary">
+              <i class="bi bi-arrow-clockwise"></i> Refresh Devices
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="terminal-fsr mt-3" style="height: 300px;">
+        <div class="head-terminal">
+          <div class="row g-0 align-items-center">
+            <div class="col-auto">
+              <div class="d-flex flex-row">
+                <div class="circle-red"></div>
+                <div class="circle-yellow"></div>
+                <div class="circle-green"></div>
+              </div>
+            </div>
+            <div class="col title-fsr ps-2">
+              <span>FSR Logs</span>
+            </div>
+            <div class="col-auto">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="fsrLogsClear()">
+                <i class="bi bi-trash"></i> Clear
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
+          <div class="cli-content p-2" id="fsmOutput"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/frida_server_manager.js') }}"></script>
+{% endblock %}
+

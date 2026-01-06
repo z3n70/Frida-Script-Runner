@@ -76,7 +76,7 @@
             <!-- ngadownloadd euy -->
             <div class="mb-4 p-3 border rounded">
               <h3 class="h6 fw-bold mb-3 text-dark"><i class="bi bi-download"></i>  Dump APK From Device</h3>
-              <form id="apkDownloadForm" action="/apk-download" method="post">
+              <form id="apkDownloadForm" action="/apk-download" method="post" target="download_frame">
                 <div class="mb-3">
                   <label for="searchInputAndroid" class="form-label">Search Packages</label>
                   <div class="input-group">
@@ -102,13 +102,15 @@
                   <div class="input-group">
                     <span class="input-group-text">name</span>
                     <input type="text" class="form-control" id="custom_name" name="custom_name" placeholder="my_app_v1">
-                    <span class="input-group-text">.apk</span>
+                    <span class="input-group-text">.apk or .zip</span>
                   </div>
-                  <small class="text-muted">Leave blank to use package name</small>
+                  <small class="text-muted">Leave blank to use package name</small><br>
+                  <small class="text-muted">If the app has split APKs, a .zip containing all splits will be downloaded.</small>
                 </div>
     
                 <button type="submit" class="btn btn-primary w-100"><i class="bi bi-download"></i> Download APK</button>
               </form>
+              <iframe id="download_frame" name="download_frame" style="display:none;"></iframe>
             </div>
             
            <!-- install apk to device andro-->

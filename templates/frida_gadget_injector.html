@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}
+<title>Frida Script Runner | Frida Gadget Injector</title>
+{% endblock %}
+
+{% block body %}
+<div class="container1">
+  <div class="justify-content-center logo">
+    <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" class="size-logo mt-3" alt="logo">
+    <h2 class="text-center white">Frida Gadget Injector</h2>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h2 class="h5 mb-0"><i class="bi bi-file-earmark-arrow-up"></i> Inject Gadget Into APK (Android)</h2>
+          <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-light" href="/frida-gadget-manager"><i class="bi bi-hdd"></i> Gadget Manager</a>
+            <a class="btn btn-sm btn-outline-light" href="/">Back</a>
+          </div>
+        </div>
+        <div class="card-body bg-white">
+          <form id="gadgetForm">
+            <div class="mb-3">
+              <label class="form-label">APK File</label>
+              <input class="form-control" type="file" name="apkFile" accept=".apk" required />
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Architecture</label>
+                <select class="form-select" name="arch" required>
+                  <option value="arm64-v8a">arm64-v8a</option>
+                  <option value="armeabi-v7a">armeabi-v7a</option>
+                  <option value="x86_64">x86_64</option>
+                  <option value="x86">x86</option>
+                </select>
+                <small class="text-muted">Match device ABI</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Frida Version</label>
+                <select class="form-select" name="version" id="fridaVersionSelect">
+                  <option value="">Latest</option>
+                </select>
+                <small class="text-muted">From GitHub releases</small>
+              </div>
+            </div>
+
+            
+
+            <hr class="my-4" />
+            <h6 class="mb-2"><i class="bi bi-filetype-js"></i> Frida Script</h6>
+            <div class="mb-2 small text-muted">Choose a script to embed next to the Gadget so it loads at startup.</div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Select From Repository</label>
+                <select class="form-select" id="scriptSelect" name="script_choice">
+                  <option value="">None</option>
+                </select>
+                <small class="text-muted">Loaded from server scripts/ directory</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Upload Script (.js)</label>
+                <input class="form-control" type="file" name="script_file" accept=".js" />
+                <small class="text-muted">Overrides selection if provided</small>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label class="form-label">Or Paste Script</label>
+              <textarea class="form-control" rows="6" name="script_text" placeholder="// Optional inline script..."></textarea>
+              <small class="text-muted">Used if provided; takes precedence over selection</small>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button id="injectBtn" type="submit" class="btn btn-success">
+                <i class="bi bi-plug"></i> Inject Gadget
+              </button>
+              <button id="resetBtn" type="button" class="btn btn-outline-secondary">Reset</button>
+            </div>
+
+
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" name="autoload" id="autoloadCheck" checked>
+              <label class="form-check-label" for="autoloadCheck">
+                Autoload Gadget at Startup (modify manifest)
+              </label>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="terminal-fsr" style="height: 420px;">
+        <div class="head-terminal">
+          <div class="row g-0 align-items-center">
+            <div class="col-auto">
+              <div class="d-flex flex-row">
+                <div class="circle-red"></div>
+                <div class="circle-yellow"></div>
+                <div class="circle-green"></div>
+              </div>
+            </div>
+            <div class="col title-fsr ps-2">
+              <span>FSR Logs</span>
+            </div>
+            <div class="col-auto">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="giLogsClear()">
+                <i class="bi bi-trash"></i> Clear
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
+          <div class="cli-content p-2" id="giOutput"></div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <div class="small text-muted">Output</div>
+          <div id="giResult" class="mt-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-footer text-center mt-4 mb-3 w-100">
+    <a class="credit d-inline-block" href="https://secrash.com" target="_blank"><span>2025 © Secrash</span></a>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/frida_gadget_injector.js') }}"></script>
+{% endblock %}

@@ -147,13 +147,61 @@ class SSLPinDetector:
             ]
         return compiled
     
-    def decompile_apk(self, apk_path: str, output_dir: str) -> bool:
+    def _is_framework_error(self, error_msg: str) -> bool:
+        """Check if error is related to missing framework files"""
+        framework_indicators = [
+            'framework',
+            'NoSuchFileException',
+            '1.apk',
+            'framework-res.apk',
+            'AndrolibException'
+        ]
+        error_lower = error_msg.lower()
+        return any(indicator.lower() in error_lower for indicator in framework_indicators)
+    
+    def _try_install_framework(self, framework_apk_path: Optional[str] = None) -> bool:
+        """
+        Try to install framework files for apktool
+        
+        Args:
+            framework_apk_path: Path to framework-res.apk (optional, will try to find)
+            
+        Returns:
+            True if installation attempted, False otherwise
+        """
+        if not self.apktool_path:
+            return False
+        
+        try:
+            apktool_lower = self.apktool_path.lower()
+            
+            if framework_apk_path and os.path.exists(framework_apk_path):
+                if apktool_lower.endswith('.jar'):
+                    cmd = ['java', '-jar', self.apktool_path, 'if', framework_apk_path]
+                else:
+                    cmd = [self.apktool_path, 'if', framework_apk_path]
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                return result.returncode == 0
+        except Exception:
+            pass
+        
+        return False
+    
+    def decompile_apk(self, apk_path: str, output_dir: str, use_no_res: bool = False, verbose: bool = False) -> bool:
         """
         Decompile APK using apktool (supports jar, exe, and binary)
         
         Args:
             apk_path: Path to APK file
             output_dir: Directory to output decompiled files
+            use_no_res: Use --no-res flag to skip resources (useful when framework files are missing)
+            verbose: Enable verbose output
             
         Returns:
             True if successful, False otherwise
@@ -171,26 +219,18 @@ class SSLPinDetector:
             apktool_lower = self.apktool_path.lower()
             
             if apktool_lower.endswith('.jar'):
-                cmd = [
-                    'java', '-jar', self.apktool_path,
-                    'd', apk_path,
-                    '-o', output_dir,
-                    '-f'  
-                ]
+                base_cmd = ['java', '-jar', self.apktool_path, 'd', apk_path, '-o', output_dir]
             elif apktool_lower.endswith(('.exe', '.bat')):
-                cmd = [
-                    self.apktool_path,
-                    'd', apk_path,
-                    '-o', output_dir,
-                    '-f'
-                ]
+                base_cmd = [self.apktool_path, 'd', apk_path, '-o', output_dir]
             else:
-                cmd = [
-                    self.apktool_path,
-                    'd', apk_path,
-                    '-o', output_dir,
-                    '-f'
-                ]
+                base_cmd = [self.apktool_path, 'd', apk_path, '-o', output_dir]
+            
+            if use_no_res:
+                cmd = base_cmd + ['-f', '--no-res', '--no-assets']
+                if verbose:
+                    print("Using --no-res flag to skip resources (framework files not required)")
+            else:
+                cmd = base_cmd + ['-f']
             
             result = subprocess.run(
                 cmd,
@@ -200,9 +240,30 @@ class SSLPinDetector:
             )
             
             if result.returncode == 0:
+                if verbose and use_no_res:
+                    print("Successfully decompiled APK with --no-res flag (resources skipped, smali files decoded)")
                 return True
             else:
                 error_msg = result.stderr or result.stdout
+                
+                if self._is_framework_error(error_msg) and not use_no_res:
+                    if verbose:
+                        print("Framework error detected, retrying with --no-res flag...")
+                    return self.decompile_apk(apk_path, output_dir, use_no_res=True, verbose=verbose)
+                
+                if self._is_framework_error(error_msg):
+                    framework_help = (
+                        "\n\nApktool requires framework files to decode this APK.\n"
+                        "To fix this, you can:\n"
+                        "1. Install framework files: apktool if framework-res.apk\n"
+                        "   (Get framework-res.apk from your Android device: /system/framework/framework-res.apk)\n"
+                        "2. Or use --no-res flag (already attempted, but may not work for all APKs)\n"
+                        "3. Extract framework-res.apk from Android SDK or device\n\n"
+                        "Note: The code tried to decode with --no-res flag but it may still fail.\n"
+                        "For SSL pinning detection, we mainly need smali files, so --no-res should work."
+                    )
+                    raise RuntimeError(f"Apktool failed (framework error): {error_msg}{framework_help}")
+                
                 raise RuntimeError(f"Apktool failed: {error_msg}")
                 
         except subprocess.TimeoutExpired:
@@ -211,6 +272,8 @@ class SSLPinDetector:
             if 'java' in str(e).lower():
                 raise RuntimeError("Java not found. Please install Java to use apktool.jar")
             raise RuntimeError(f"Apktool not found: {str(e)}")
+        except RuntimeError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Error decompiling APK: {str(e)}")
     
@@ -276,6 +339,88 @@ class SSLPinDetector:
         context = lines[start:end]
         return '\n'.join([f"{start + i + 1:4d}: {line.rstrip()}" for i, line in enumerate(context)])
     
+    def download_apk_from_package(self, package_name: str, device_serial: Optional[str] = None, 
+                                  output_path: Optional[str] = None) -> str:
+        """
+        Download APK from installed package on Android device
+        
+        Args:
+            package_name: Package name (e.g., com.example.app)
+            device_serial: Device serial number (optional, for multiple devices)
+            output_path: Output path for downloaded APK (optional, uses temp if not provided)
+            
+        Returns:
+            Path to downloaded APK file
+            
+        Raises:
+            RuntimeError: If download fails
+        """
+        import subprocess
+        
+        cmd = ['adb']
+        if device_serial:
+            cmd.extend(['-s', device_serial])
+        cmd.extend(['shell', 'pm', 'path', package_name])
+        
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"Failed to get APK path: {result.stderr}")
+            
+            lines = [ln.strip() for ln in result.stdout.split('\n') if ln.strip()]
+            if not lines:
+                raise RuntimeError(f"Package {package_name} not found on device")
+            
+            apk_remote_path = None
+            for line in lines:
+                if ':' in line:
+                    path = line.split(':', 1)[1].strip()
+                    if path and path.endswith('.apk'):
+                        apk_remote_path = path
+                        break
+            
+            if not apk_remote_path:
+                raise RuntimeError(f"Could not find APK path for package {package_name}")
+            
+            if not output_path:
+                safe_package = re.sub(r'[^a-zA-Z0-9_.-]', '_', package_name)
+                upload_folder = os.path.join('tmp', 'uploads')
+                os.makedirs(upload_folder, exist_ok=True)
+                output_path = os.path.join(upload_folder, f'{safe_package}.apk')
+            
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            pull_cmd = ['adb']
+            if device_serial:
+                pull_cmd.extend(['-s', device_serial])
+            pull_cmd.extend(['pull', apk_remote_path, output_path])
+            
+            pull_result = subprocess.run(
+                pull_cmd,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if pull_result.returncode != 0:
+                raise RuntimeError(f"Failed to pull APK: {pull_result.stderr}")
+            
+            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                raise RuntimeError("Downloaded APK is empty or missing")
+            
+            return output_path
+            
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("ADB command timed out")
+        except Exception as e:
+            raise RuntimeError(f"Error downloading APK: {str(e)}")
+
     def detect_ssl_pinning(self, apk_path: str, apktool_path: Optional[str] = None, 
                           verbose: bool = False) -> Dict:
         """
@@ -313,7 +458,7 @@ class SSLPinDetector:
             if verbose:
                 print(f"Decompiling APK: {apk_path}")
             
-            self.decompile_apk(apk_path, temp_dir)
+            self.decompile_apk(apk_path, temp_dir, verbose=verbose)
             
             if verbose:
                 print(f"Scanning smali files in: {temp_dir}")

@@ -72,29 +72,25 @@ def get_devices() -> Dict[str, Any]:
     """
     Get list of connected ADB devices.
     """
-    # Use shorter timeout for devices list
     result = _run_adb_command(["devices", "-l"], timeout=2)
     if not result["success"]:
         return {"success": False, "error": result["stderr"], "devices": []}
     
     devices = []
     lines = result["stdout"].splitlines()
-    for line in lines[1:]:  # Skip first line "List of devices attached"
+    for line in lines[1:]:
         line = line.strip()
         if not line:
             continue
         
-        # Only process lines that look like device entries
         parts = line.split()
         if len(parts) >= 2:
             serial = parts[0]
             state = parts[1]
             
-            # Only include valid states
             if state in ["device", "offline", "unauthorized", "sideload", "recovery"]:
                 device_info = {"serial": serial, "state": state}
                 
-                # Parse additional info
                 for part in parts[2:]:
                     if ":" in part:
                         key, value = part.split(":", 1)
@@ -117,7 +113,6 @@ def check_device_responsive(serial: Optional[str] = None) -> Dict[str, Any]:
     if serial:
         cmd = ["-s", serial] + cmd
     
-    # Very short timeout for quick check
     result = _run_adb_command(cmd, timeout=2)
     return {"success": result["success"], "responsive": result["success"]}
 
@@ -126,7 +121,6 @@ def get_device_info(serial: Optional[str] = None) -> Dict[str, Any]:
     """
     Get detailed information about a device.
     """
-    # Quick check first
     responsive = check_device_responsive(serial)
     if not responsive["responsive"]:
         return {"success": False, "error": "Device is not responsive", "info": {}}
@@ -135,7 +129,6 @@ def get_device_info(serial: Optional[str] = None) -> Dict[str, Any]:
     if serial:
         cmd = ["-s", serial] + cmd
     
-    # Use shorter timeout for device info
     result = _run_adb_command(cmd, timeout=3)
     if not result["success"]:
         return {"success": False, "error": result["stderr"], "info": {}}
@@ -167,7 +160,6 @@ def get_packages(serial: Optional[str] = None) -> Dict[str, Any]:
     """
     Get list of installed packages on the device.
     """
-    # Quick check first
     responsive = check_device_responsive(serial)
     if not responsive["responsive"]:
         return {"success": False, "error": "Device is not responsive", "packages": []}
@@ -176,7 +168,6 @@ def get_packages(serial: Optional[str] = None) -> Dict[str, Any]:
     if serial:
         cmd = ["-s", serial] + cmd
     
-    # Use shorter timeout for packages list
     result = _run_adb_command(cmd, timeout=3)
     if not result["success"]:
         return {"success": False, "error": result["stderr"], "packages": []}
@@ -305,7 +296,6 @@ def get_system_memory_info(serial: Optional[str] = None) -> Dict[str, Any]:
     if not result["success"]:
         return {"success": False, "error": result["stderr"], "meminfo": {}}
     
-    # Parse /proc/meminfo output
     meminfo = {}
     for line in result["stdout"].splitlines():
         if ":" in line:
@@ -313,13 +303,11 @@ def get_system_memory_info(serial: Optional[str] = None) -> Dict[str, Any]:
             if len(parts) == 2:
                 key = parts[0].strip()
                 value_str = parts[1].strip()
-                # Extract numeric value (remove "kB" suffix if present)
                 value_str = value_str.replace("kB", "").strip()
                 try:
                     value = int(value_str)
                     meminfo[key] = value
                 except ValueError:
-                    # If conversion fails, store as string
                     meminfo[key] = value_str
     
     return {"success": True, "meminfo": meminfo}
@@ -337,13 +325,10 @@ def get_disk_space(serial: Optional[str] = None) -> Dict[str, Any]:
     if not result["success"]:
         return {"success": False, "error": result["stderr"], "info": "", "partitions": []}
     
-    # Parse df output
     partitions = []
     lines = result["stdout"].splitlines()
     
-    # Helper function to convert size strings to bytes
     def parse_size(size_str):
-        """Convert size string (e.g., '1.5G', '500M') to bytes"""
         if not size_str or size_str == '-' or size_str == '0':
             return 0
         size_str = str(size_str).upper().strip()
@@ -359,11 +344,10 @@ def get_disk_space(serial: Optional[str] = None) -> Dict[str, Any]:
         except:
             return 0
     
-    for line in lines[1:]:  # Skip header
+    for line in lines[1:]:
         if not line.strip():
             continue
         
-        # Split by whitespace but handle spaces in mount points
         parts = line.split()
         if len(parts) >= 5:
             try:
@@ -372,18 +356,15 @@ def get_disk_space(serial: Optional[str] = None) -> Dict[str, Any]:
                 used_str = parts[2]
                 available_str = parts[3]
                 use_percent_str = parts[4].rstrip('%')
-                # Mount point might be the rest of the line
                 mounted_on = ' '.join(parts[5:]) if len(parts) > 5 else ""
                 
                 size_bytes = parse_size(size_str)
                 used_bytes = parse_size(used_str)
                 available_bytes = parse_size(available_str)
                 
-                # Calculate percentage - try to parse from string or calculate
                 try:
                     use_percent_float = float(use_percent_str)
                 except:
-                    # Calculate from bytes if percentage not available
                     if size_bytes > 0:
                         use_percent_float = (used_bytes / size_bytes) * 100
                     else:
@@ -401,7 +382,6 @@ def get_disk_space(serial: Optional[str] = None) -> Dict[str, Any]:
                     "available_bytes": available_bytes
                 })
             except Exception as e:
-                # Skip invalid lines
                 continue
     
     return {
@@ -425,7 +405,6 @@ def get_screen_info(serial: Optional[str] = None) -> Dict[str, Any]:
     
     size = result["stdout"].strip()
     
-    # Get density
     cmd_density = ["shell", "wm", "density"]
     if serial:
         cmd_density = ["-s", serial] + cmd_density
@@ -485,7 +464,6 @@ def send_text(text: str, serial: Optional[str] = None) -> Dict[str, Any]:
     """
     Send text input to device.
     """
-    # Use shell with proper escaping
     escaped_text = text.replace(" ", "\\ ").replace("&", "\\&").replace("'", "\\'").replace("(", "\\(").replace(")", "\\)")
     cmd = ["shell", "input", "text", escaped_text]
     if serial:
@@ -495,7 +473,6 @@ def send_text(text: str, serial: Optional[str] = None) -> Dict[str, Any]:
     if result["success"]:
         return {"success": True, "message": f"Text sent: {text}"}
     else:
-        # Try alternative method with quotes
         try:
             import shlex
             safe_text = shlex.quote(text)
@@ -517,7 +494,6 @@ def launch_app(package_name: str, activity: Optional[str] = None, serial: Option
     if activity:
         cmd = ["shell", "am", "start", "-n", f"{package_name}/{activity}"]
     else:
-        # Try to get main activity
         cmd = ["shell", "monkey", "-p", package_name, "-c", "android.intent.category.LAUNCHER", "1"]
     
     if serial:
@@ -527,7 +503,6 @@ def launch_app(package_name: str, activity: Optional[str] = None, serial: Option
     if result["success"]:
         return {"success": True, "message": f"Launched {package_name}"}
     else:
-        # Try alternative method
         if not activity:
             cmd_alt = ["shell", "am", "start", "-n", package_name]
             if serial:
@@ -550,12 +525,10 @@ def get_package_activity(package_name: str, serial: Optional[str] = None) -> Dic
     if not result["success"]:
         return {"success": False, "error": result["stderr"], "activity": None}
     
-    # Parse main activity from dump
     lines = result["stdout"].splitlines()
     activity = None
     for line in lines:
         if "android.intent.action.MAIN" in line and "android.intent.category.LAUNCHER" in line:
-            # Extract activity name
             parts = line.split()
             for part in parts:
                 if package_name in part and "/" in part:

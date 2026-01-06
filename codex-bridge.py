@@ -309,7 +309,6 @@ class CodexBridgeHandler(BaseHTTPRequestHandler):
             codex_cmd = get_codex_cmd()
             if not codex_cmd:
                 raise RuntimeError("Codex CLI not found. Ensure it is installed and in PATH.")
-            # Prefer non-interactive exec mode with plain output
             prompt_payload = build_prompt(prompt)
             cmd = [
                 codex_cmd,
@@ -413,22 +412,18 @@ def parse_arguments() -> argparse.Namespace:
 
 def find_codex_executable() -> Optional[str]:
     """Attempt to locate the Codex CLI executable robustly on all platforms."""
-    # 1) Explicit override from config/env
     explicit = CONFIG.get('codex_path') or os.environ.get('CODEX_CLI_PATH', '')
     explicit = explicit.strip() if explicit else ''
     if explicit:
         if os.path.isfile(explicit):
             return explicit
-        # Try adding .exe on Windows if not provided
         if os.name == 'nt' and os.path.isfile(explicit + '.exe'):
             return explicit + '.exe'
 
-    # 2) PATH lookup (handles .exe via PATHEXT on Windows)
     path_hit = shutil.which('codex') or shutil.which('codex.exe')
     if path_hit:
         return path_hit
 
-    # 3) Common Windows install locations (best-effort)
     if os.name == 'nt':
         username = os.environ.get('USERNAME') or os.environ.get('USER') or 'User'
         candidates = [
