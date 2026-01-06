@@ -25,7 +25,7 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 
 ## Tech Graph
 <p align="center">
-  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/mc/new_features_frida_server_manager/FSR_Tech_Graph.png" width="800">
+  <img src="https://raw.githubusercontent.com/z3n70/Frida-Script-Runner/refs/heads/main/FSR_Tech_Graph.png" width="800">
 </p>
 
 ---
