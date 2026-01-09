@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}
+    <title>Frida Script Runner | APK Downloader</title>
+{% endblock %}
+
+{% block body %}
+<div class="w-75 mx-auto">
+  <div class="justify-content-center logo">
+    <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" class="size-logo mt-3" alt="logo">
+    <h2 class="text-center white">APK Downloader</h2>
+    <p class="text-center text-white-50">Download APK from multiple sources</p>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+          <h2 class="h5 mb-0"><i class="bi bi-shield-lock"></i>APK Downloader</h2>
+        </div>
+        <div class="card-body bg-white">
+          <div class="input-group mb-3">
+            <input type="text" class="form-control" placeholder="TODO Apps" id="keywords">
+            <button class="btn btn-outline-secondary" type="button" onclick="searchApk()">Search</button>
+          </div>
+          <div class="mx-2 px-2 d-flex" style="min-height: 15rem; max-height: 25rem; width: 100%; overflow-x: scroll;" id="searchResults">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-footer text-center mt-4 mb-3 w-100">
+    <a class="credit d-inline-block" href="https://secrash.com" target="_blank"><span>2025 © Secrash</span></a>
+  </div>
+</div>
+
+<script>
+  addEventListener("keydown", async (event) => {
+    if (event.key === 'Enter') {
+      await searchApk();
+    }
+  });
+
+  async function searchApk() {
+    const params = new URLSearchParams({
+      keywords: keywords.value
+    });
+
+    const res = await fetch(`/api/apk-downloader/search?${params}`);
+    const items = await res.json();
+
+    const searchResults = document.getElementById('searchResults');
+    searchResults.innerHTML = '';
+
+    // if (items.length == 0) {
+    //   searchResults.innerHTML = `None`;
+    // }
+
+    items.forEach(item => {
+      const col = document.createElement('div');
+      col.className = 'col-6 col-md-4 col-lg-3';
+
+      col.innerHTML = `
+        <div class="card shadow-sm" style="height: 19rem; width: 15rem;">
+          <img
+            src="${item.icon_url}"
+            class="card-img-top p-2"
+            alt="${item.name || 'APK Icon'}"
+            style="height: 75px; object-fit: contain;"
+          >
+          <div class="card-body text-center">
+            <h6 class="card-title mb-3">${item.name}</h6>
+            <p style="font-size: 12px;">${item.developer}</p>
+            <p style="font-size: 10px;">${item.package_name}</p>
+          </div>
+          <div class="card-footer">
+            <a href="${item.download_url ?? '#'}" class="btn btn-primary text-center align-center" style="height: 40px; width: 100%;">DOWNLOAD</a>
+          </div>
+        </div>
+      `;
+
+      searchResults.appendChild(col);
+    });
+  }
+</script>
+{% endblock %}
