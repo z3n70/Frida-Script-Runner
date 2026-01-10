@@ -1,3 +1,4 @@
+from androidkit.apk.sources import ApkPure
 from flask import Flask, render_template, request, jsonify, send_file, abort, after_this_request
 from flask_socketio import SocketIO
 from colorama import Fore
@@ -4971,6 +4972,21 @@ def sslpindetect_analyze():
             'success': False,
             'error': f'Unexpected error: {str(e)}'
         }), 500
+
+@app.route('/apk-downloader', methods=['GET'])
+def apk_downloader():
+    return render_template('apk-downloader.html')
+
+@app.route('/api/apk-downloader/search')
+def apk_search():
+    search_query = request.args.get('keywords', '').strip().lower()
+    source = ApkPure()
+    items = source.search(search_query, limit=100)
+
+    for item in items:
+        item['download_url'] = source.get_download_url(item['package_name'])
+
+    return jsonify(items)
 
 if __name__ == "__main__":
     main()
