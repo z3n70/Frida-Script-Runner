@@ -31,45 +31,85 @@ class SSLPinDetector:
         self.compiled_patterns = self._compile_patterns()
     
     def _find_apktool(self) -> Optional[str]:
-        """Try to find apktool in common locations (supports jar, exe, and binary)"""
+        """Locate apktool, preferring the system-installed official version.
+
+        Order of preference:
+        1) `apktool` found in PATH (official wrapper).
+        2) Non-dirty binaries in common dirs (apktool/apktool.exe/apktool.bat).
+        3) Highest-version official jar (apktool_*.jar) in common dirs, skipping any 'dirty' jars.
+        4) Fallback to plain apktool.jar if present.
+        """
         import platform
-        
+        import glob
+        import shutil
+
+        # Prefer system-installed apktool in PATH
+        path_tool = shutil.which('apktool')
+        if path_tool:
+            return path_tool
+
         system = platform.system()
         is_windows = system == 'Windows'
-        
-        apktool_names = []
-        if is_windows:
-            apktool_names = ['apktool.exe', 'apktool.bat', 'apktool.jar', 'apktool_2.11.0.jar']
-        else:
-            apktool_names = ['apktool', 'apktool.jar', 'apktool_2.11.0.jar']
-        
+
+        # Likely locations to search next
         search_paths = [
-            '',  
+            '',
+            os.path.join(os.getcwd(), 'resources'),
+            os.path.join(os.getcwd(), 'tools', 'resources'),
             os.path.join(os.path.expanduser('~'), 'bin'),
             os.path.join(os.path.expanduser('~'), '.local', 'bin'),
             '/usr/local/bin',
             '/usr/bin',
-            '/opt/homebrew/bin',  
+            '/opt/homebrew/bin',
             os.path.join(os.path.expanduser('~'), 'apktool'),
             os.path.join(os.path.expanduser('~'), 'tools', 'apktool'),
         ]
-        
+
         path_env = os.environ.get('PATH', '')
         if path_env:
             search_paths.extend(path_env.split(os.pathsep))
-        
-        for search_path in search_paths:
-            for name in apktool_names:
-                if search_path:
-                    full_path = os.path.join(search_path, name)
-                else:
-                    full_path = name
-                
-                if os.path.exists(full_path) and os.path.isfile(full_path):
-                    if os.access(full_path, os.X_OK) or full_path.endswith('.jar'):
-                        return full_path
-        
-        return None
+
+        candidate_bins: List[str] = []
+        candidate_jars_versioned: List[tuple] = []  # (version_tuple, path)
+        candidate_plain_jar: Optional[str] = None
+
+        version_re = re.compile(r'apktool_(\d+)\.(\d+)\.(\d+)\.jar$', re.IGNORECASE)
+
+        for base in search_paths:
+            if not base:
+                base = os.getcwd()
+            try:
+                # Binaries
+                for name in (['apktool.exe', 'apktool.bat'] if is_windows else ['apktool']):
+                    p = os.path.join(base, name)
+                    if os.path.isfile(p) and os.access(p, os.X_OK) and 'dirty' not in os.path.basename(p).lower():
+                        candidate_bins.append(p)
+
+                # Plain jar
+                jar_plain = os.path.join(base, 'apktool.jar')
+                if os.path.isfile(jar_plain) and 'dirty' not in os.path.basename(jar_plain).lower():
+                    candidate_plain_jar = candidate_plain_jar or jar_plain
+
+                # Versioned jars (skip any with 'dirty' in name)
+                for jar in glob.glob(os.path.join(base, 'apktool_*.jar')):
+                    name_lower = os.path.basename(jar).lower()
+                    if 'dirty' in name_lower:
+                        continue
+                    m = version_re.search(name_lower)
+                    if m:
+                        ver = tuple(int(x) for x in m.groups())  # (major, minor, patch)
+                        candidate_jars_versioned.append((ver, jar))
+            except Exception:
+                continue
+
+        if candidate_bins:
+            return candidate_bins[0]
+
+        if candidate_jars_versioned:
+            candidate_jars_versioned.sort(reverse=True)  # highest version first
+            return candidate_jars_versioned[0][1]
+
+        return candidate_plain_jar
     
     def _load_patterns(self) -> Dict[str, List[str]]:
         """Load SSL pinning patterns from JSON file"""

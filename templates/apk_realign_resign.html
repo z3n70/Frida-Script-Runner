@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}
+<title>Frida Script Runner | APK Re-Align & Re-Sign</title>
+{% endblock %}
+
+{% block body %}
+<div class="container1">
+  <div class="justify-content-center logo">
+    <img src="{{ url_for('static', filename='img/FSR-logo.png') }}" class="size-logo mt-3" alt="logo">
+    <h2 class="text-center white">APK Re-Align & Re-Sign</h2>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h2 class="h5 mb-0"><i class="bi bi-file-earmark-arrow-up"></i> Upload APK</h2>
+          <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-outline-light" href="/">Back</a>
+          </div>
+        </div>
+        <div class="card-body bg-white">
+          <form id="resignForm">
+            <div class="mb-3">
+              <label class="form-label">APK File</label>
+              <input class="form-control" type="file" name="apkFile" accept=".apk" required />
+            </div>
+
+            <hr class="my-3" />
+            <h6 class="mb-2"><i class="bi bi-key"></i> Keystore Options</h6>
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" role="switch" id="useCustomKs" name="use_custom_keystore">
+              <label class="form-check-label" for="useCustomKs">Use custom keystore</label>
+            </div>
+
+            <div id="customKsFields" style="display:none;">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Keystore File</label>
+                  <input class="form-control" type="file" name="keystoreFile" accept=".jks,.keystore,.pem,.p12,.pfx" />
+                  <small class="text-muted">.jks/.keystore typical; .p12/.pfx requires alias</small>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Key Alias</label>
+                  <input class="form-control" type="text" name="ks_alias" placeholder="androiddebugkey" />
+                </div>
+              </div>
+              <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                  <label class="form-label">Store Password</label>
+                  <input class="form-control" type="password" name="ks_pass" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Key Password</label>
+                  <input class="form-control" type="password" name="key_pass" />
+                </div>
+              </div>
+              <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                  <label class="form-label">Min SDK (optional)</label>
+                  <input class="form-control" type="number" name="min_sdk" min="16" placeholder="e.g. 21" />
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button id="resignBtn" type="submit" class="btn btn-success">
+                <i class="bi bi-check2-circle"></i> Re-Align & Re-Sign
+              </button>
+              <button id="resetBtn" type="button" class="btn btn-outline-secondary">Reset</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="terminal-fsr" style="height: 420px;">
+        <div class="head-terminal">
+          <div class="row g-0 align-items-center">
+            <div class="col-auto">
+              <div class="d-flex flex-row">
+                <div class="circle-red"></div>
+                <div class="circle-yellow"></div>
+                <div class="circle-green"></div>
+              </div>
+            </div>
+            <div class="col title-fsr ps-2">
+              <span>FSR Logs</span>
+            </div>
+            <div class="col-auto">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resignLogsClear()">
+                <i class="bi bi-trash"></i> Clear
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="cli" style="height: calc(100% - 38px); overflow-y: auto;">
+          <div class="cli-content p-2" id="resignOutput"></div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <div class="small text-muted">Output</div>
+          <div id="resignResult" class="mt-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-footer text-center mt-4 mb-3 w-100">
+    <a class="credit d-inline-block" href="https://secrash.com" target="_blank"><span>2025 Ac Secrash</span></a>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/apk_realign_resign.js') }}"></script>
+{% endblock %}
+

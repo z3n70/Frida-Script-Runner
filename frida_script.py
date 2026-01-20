@@ -20,6 +20,7 @@ import wget
 import subprocess
 import xml.etree.ElementTree as ET
 import tempfile
+import glob
 
 from mobile_proxy import (
     get_current_mobile_proxy,
@@ -172,6 +173,156 @@ def api_adb_devices():
             'devices': devices,
             'message': info.get('message', '')
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# -------------------- APK Re-Align & Re-Sign (Android) --------------------
+@app.route('/apk-realign-resign')
+def apk_realign_resign_page():
+    return render_template('apk_realign_resign.html')
+
+
+def _detect_build_tools():
+    bt = _find_build_tools_path()
+    zipalign = None
+    apksigner = None
+    if bt:
+        zipalign = os.path.join(bt, 'zipalign.exe' if os.name == 'nt' else 'zipalign')
+        apksigner = os.path.join(bt, 'apksigner.bat' if os.name == 'nt' else 'apksigner')
+    if not zipalign or not os.path.exists(zipalign):
+        zipalign = _find_exe(['zipalign'])
+    if not apksigner or not os.path.exists(apksigner):
+        apksigner = _find_exe(['apksigner'])
+    if not zipalign or not apksigner:
+        raise RuntimeError('zipalign/apksigner not found in Android SDK build-tools or PATH')
+    return zipalign, apksigner
+
+
+def _sign_with_keystore(aligned_apk: str, out_apk: str, apksigner: str,
+                        keystore_path: str, alias: str, storepass: str, keypass: str, min_sdk: str = None):
+    cmd = [apksigner, 'sign']
+    if min_sdk:
+        cmd += ['--min-sdk-version', str(min_sdk)]
+    cmd += [
+        '--ks', keystore_path,
+        '--ks-pass', f'pass:{storepass}',
+        '--key-pass', f'pass:{keypass}',
+        '--ks-key-alias', str(alias or 'androiddebugkey'),
+        '--out', out_apk,
+        aligned_apk
+    ]
+    sr = subprocess.run(cmd, capture_output=True, text=True)
+    if sr.returncode != 0:
+        raise RuntimeError(f"apksigner failed: {sr.stderr or sr.stdout}")
+
+
+def _generate_debug_keystore(target_dir: str) -> str:
+    debug_keystore = os.path.join(target_dir, 'debug.keystore')
+    if os.path.exists(debug_keystore):
+        return debug_keystore
+    keytool = _find_exe(['keytool.exe', 'keytool'])
+    if not keytool:
+        raise RuntimeError('Java keytool not found to generate debug keystore')
+    subprocess.run([
+        keytool, '-genkey', '-v',
+        '-keystore', debug_keystore,
+        '-alias', 'androiddebugkey',
+        '-storepass', 'android',
+        '-keypass', 'android',
+        '-keyalg', 'RSA',
+        '-keysize', '2048',
+        '-validity', '10000',
+        '-dname', 'CN=Android Debug,O=Android,C=US'
+    ], check=True, capture_output=True, text=True)
+    return debug_keystore
+
+
+@app.route('/api/apk/realign-resign', methods=['POST'])
+def api_apk_realign_resign():
+    try:
+        if 'apkFile' not in request.files:
+            return jsonify({'success': False, 'error': 'No APK file uploaded'}), 400
+
+        file = request.files['apkFile']
+        if not file.filename.endswith('.apk'):
+            return jsonify({'success': False, 'error': 'Only APK files are supported'}), 400
+
+        filename = secure_filename(file.filename)
+        upload_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(upload_path)
+        try:
+            fsize = os.path.getsize(upload_path)
+        except Exception:
+            fsize = -1
+        log_to_fsr_logs(f"[RESIGN] Upload received: {filename} -> {upload_path} (size={fsize} bytes)")
+
+        workdir = tempfile.mkdtemp(prefix='apk_resign_')
+        aligned_path = os.path.join(workdir, 'apk-aligned.apk')
+        signed_path = os.path.join(workdir, 'apk-signed.apk')
+
+        @after_this_request
+        def _cleanup_files(response):
+            try:
+                if os.path.exists(upload_path):
+                    os.remove(upload_path)
+            except Exception:
+                pass
+            try:
+                if os.path.isdir(workdir):
+                    shutil.rmtree(workdir, ignore_errors=True)
+            except Exception:
+                pass
+            return response
+
+        # Tools
+        log_to_fsr_logs('[RESIGN] Locating Android build-tools (zipalign, apksigner) ...')
+        zipalign, apksigner = _detect_build_tools()
+        log_to_fsr_logs(f"[RESIGN] zipalign: {zipalign}")
+        log_to_fsr_logs(f"[RESIGN] apksigner: {apksigner}")
+
+        # Align
+        log_to_fsr_logs('[RESIGN] Aligning APK (zipalign -p -v 4) ...')
+        try:
+            if os.path.exists(aligned_path):
+                os.remove(aligned_path)
+        except Exception:
+            pass
+        zr = subprocess.run([zipalign, '-v', '-p', '4', upload_path, aligned_path], capture_output=True, text=True)
+        if zr.returncode != 0:
+            raise RuntimeError(f"zipalign failed: {zr.stderr or zr.stdout}")
+        log_to_fsr_logs('[RESIGN] zipalign OK')
+
+        # Keystore options
+        use_custom = (request.form.get('use_custom_keystore') or '').lower() in ('1','true','on','yes')
+        min_sdk = (request.form.get('min_sdk') or '').strip() or None
+        if use_custom and 'keystoreFile' in request.files and request.files['keystoreFile']:
+            ks_file = request.files['keystoreFile']
+            ks_alias = (request.form.get('ks_alias') or '').strip()
+            ks_pass = (request.form.get('ks_pass') or '').strip()
+            key_pass = (request.form.get('key_pass') or '').strip()
+            if not ks_alias or not ks_pass:
+                return jsonify({'success': False, 'error': 'Custom keystore requires alias and passwords'}), 400
+            ks_filename = secure_filename(ks_file.filename or 'keystore.jks')
+            ks_path = os.path.join(workdir, ks_filename)
+            ks_file.save(ks_path)
+            log_to_fsr_logs(f"[RESIGN] Using custom keystore: {ks_filename}")
+            _sign_with_keystore(aligned_path, signed_path, apksigner, ks_path, ks_alias, ks_pass, key_pass or ks_pass, min_sdk)
+        else:
+            # Generate debug keystore and sign
+            log_to_fsr_logs('[RESIGN] Generating debug keystore (android/android) ...')
+            ks_path = _generate_debug_keystore(workdir)
+            log_to_fsr_logs('[RESIGN] Signing APK with debug keystore ...')
+            _sign_with_keystore(aligned_path, signed_path, apksigner, ks_path, 'androiddebugkey', 'android', 'android', min_sdk)
+
+        try:
+            fsz = os.path.getsize(signed_path)
+        except Exception:
+            fsz = -1
+        log_to_fsr_logs(f"[RESIGN] Final APK: {signed_path} (size={fsz} bytes)")
+
+        dl_name = 'resigned.apk'
+        return send_file(signed_path, as_attachment=True, download_name=dl_name, mimetype='application/vnd.android.package-archive')
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -387,13 +538,27 @@ def _list_cached_gadgets():
             continue
         for arch in sorted(os.listdir(vdir)):
             adir = os.path.join(vdir, arch)
-            so_path = os.path.join(adir, 'libfrida-gadget.so')
-            if os.path.isfile(so_path):
-                try:
-                    size = os.path.getsize(so_path)
-                except Exception:
-                    size = -1
-                items.append({'version': ver, 'arch': arch, 'path': so_path, 'size': size})
+            if not os.path.isdir(adir):
+                continue
+            try:
+                for fn in os.listdir(adir):
+                    # Only list plain gadget .so files: lib<name>.so (no extra dots)
+                    if not fn.startswith('lib') or not fn.endswith('.so'):
+                        continue
+                    name_body = fn[3:-3]
+                    # Exclude config/script or other compound names (contain extra dots)
+                    if '.' in name_body:
+                        continue
+                    so_path = os.path.join(adir, fn)
+                    if not os.path.isfile(so_path):
+                        continue
+                    try:
+                        size = os.path.getsize(so_path)
+                    except Exception:
+                        size = -1
+                    items.append({'version': ver, 'arch': arch, 'path': so_path, 'size': size, 'filename': fn})
+            except Exception:
+                continue
     return items
 
 
@@ -465,6 +630,53 @@ def api_gadget_delete():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/gadget/rename', methods=['POST'])
+def api_gadget_rename():
+    try:
+        data = request.get_json(force=True)
+        version = (data.get('version') or '').strip()
+        arch = (data.get('arch') or '').strip()
+        old_filename = (data.get('old_filename') or '').strip() or 'libfrida-gadget.so'
+        new_name = (data.get('new_name') or '').strip()
+        mode = (data.get('mode') or 'copy').strip().lower()
+
+        if not version or not arch or not new_name:
+            return jsonify({'success': False, 'error': 'version, arch and new_name are required'}), 400
+
+        # Sanitize new_name to allowed characters
+        import re as _re
+        if not _re.fullmatch(r'[A-Za-z0-9_\-]{1,64}', new_name):
+            return jsonify({'success': False, 'error': 'Invalid new_name. Use letters, numbers, _ or -, length 1-64'}), 400
+
+        dir_path = os.path.join(GADGET_CACHE_DIR, version, arch)
+        if not os.path.isdir(dir_path):
+            return jsonify({'success': False, 'error': 'Cache directory not found'}), 400
+
+        src = os.path.join(dir_path, old_filename)
+        if not os.path.isfile(src):
+            return jsonify({'success': False, 'error': f'Cached file not found: {old_filename}'}), 400
+
+        dst_filename = f'lib{new_name}.so'
+        dst = os.path.join(dir_path, dst_filename)
+        if os.path.exists(dst):
+            return jsonify({'success': False, 'error': f'Destination exists: {dst_filename}'}), 400
+
+        if mode == 'move':
+            os.rename(src, dst)
+            action = 'moved'
+        else:
+            shutil.copyfile(src, dst)
+            action = 'copied'
+
+        try:
+            size = os.path.getsize(dst)
+        except Exception:
+            size = -1
+        return jsonify({'success': True, 'path': dst, 'filename': dst_filename, 'size': size, 'action': action})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _determine_smali_dir(workdir: str) -> str:
     # Prefer 'smali' then any 'smali*'
     primary = os.path.join(workdir, 'smali')
@@ -496,7 +708,7 @@ def _modify_manifest_add_application(manifest_path: str, app_class: str) -> bool
         return False
 
 
-def _write_application_smali(smali_dir: str, app_class: str) -> bool:
+def _write_application_smali(smali_dir: str, app_class: str, lib_name: str = 'frida-gadget') -> bool:
     # app_class like 'com.fsr.FSRApp'
     try:
         parts = app_class.split('.')
@@ -518,7 +730,7 @@ def _write_application_smali(smali_dir: str, app_class: str) -> bool:
 
 .method public onCreate()V
     .locals 1
-    const-string v0, "frida-gadget"
+    const-string v0, "{lib_name}"
     invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
     invoke-super {{p0}}, Landroid/app/Application;->onCreate()V
     return-void
@@ -556,7 +768,7 @@ def _get_manifest_application_name(manifest_path: str) -> str:
     return ''
 
 
-def _write_app_wrapper_smali(smali_dir: str, wrapper_class: str, base_class: str) -> bool:
+def _write_app_wrapper_smali(smali_dir: str, wrapper_class: str, base_class: str, lib_name: str = 'frida-gadget') -> bool:
     try:
         # wrapper_class like 'com.fsr.AppWrapper', base_class like 'com.aminivan.applications.BaseApplication'
         w_parts = wrapper_class.split('.')
@@ -580,7 +792,7 @@ def _write_app_wrapper_smali(smali_dir: str, wrapper_class: str, base_class: str
 
 .method public onCreate()V
     .locals 1
-    const-string v0, "frida-gadget"
+    const-string v0, "{lib_name}"
     invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
     invoke-super {{p0}}, {b_internal}->onCreate()V
     return-void
@@ -656,7 +868,7 @@ def _get_manifest_component_factory(manifest_path: str) -> str:
     return ''
 
 
-def _write_component_factory_wrapper_smali(smali_dir: str, wrapper_class: str, base_factory_class: str) -> bool:
+def _write_component_factory_wrapper_smali(smali_dir: str, wrapper_class: str, base_factory_class: str, lib_name: str = 'frida-gadget') -> bool:
     try:
         w_parts = wrapper_class.split('.')
         b_parts = (base_factory_class or 'android.app.AppComponentFactory').split('.')
@@ -679,7 +891,7 @@ def _write_component_factory_wrapper_smali(smali_dir: str, wrapper_class: str, b
 
 .method public instantiateApplication(Ljava/lang/ClassLoader;Ljava/lang/String;)Landroid/app/Application;
     .locals 1
-    const-string v0, "frida-gadget"
+    const-string v0, "{lib_name}"
     invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
     invoke-super {{p0, p1, p2}}, {b_internal}->instantiateApplication(Ljava/lang/ClassLoader;Ljava/lang/String;)Landroid/app/Application;
     move-result-object v0
@@ -770,11 +982,11 @@ def _is_text_xml(file_path: str) -> bool:
 def _run_apktool_decode_full(apktool_path: str, apk_path: str, out_dir: str):
     apktool_lower = apktool_path.lower()
     if apktool_lower.endswith('.jar'):
-        cmd = ['java', '-jar', apktool_path, 'd', apk_path, '-o', out_dir, '-f', '--use-aapt2']
+        cmd = ['java', '-jar', apktool_path, 'd', apk_path, '-o', out_dir, '-f']
     elif apktool_lower.endswith(('.exe', '.bat')):
-        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '--use-aapt2']
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f']
     else:
-        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '--use-aapt2']
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f']
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
@@ -907,28 +1119,56 @@ def _ensure_text_manifest(apktool_path: str, apk_path: str, workdir: str) -> str
 
 
 def _find_apktool_from_resources() -> str:
+    """Search bundled resources for official apktool, avoiding any 'dirty' builds.
+
+    Scans both tools/resources and resources directories and picks the best candidate:
+    - Prefer non-dirty binaries (apktool/apktool.exe) if present.
+    - Then prefer highest-version apktool_*.jar (skipping any with 'dirty' in name).
+    - Fallback to plain apktool.jar.
+    """
     try:
-        candidates = []
-        base = os.path.join('tools', 'resources')
-        if os.path.isdir(base):
-            for name in [
-                'apktool_2.12.1.jar',
-                'apktool_2.12.0.jar',
-                'apktool_2.11.0.jar',
-                'apktool.jar',
-            ]:
-                p = os.path.join(base, name)
-                if os.path.isfile(p):
-                    candidates.append(p)
-            for name in ['apktool', 'apktool.exe']:
-                p = os.path.join(base, name)
-                if os.path.isfile(p):
-                    candidates.append(p)
-        for p in candidates:
-            return p
+        bases = [
+            os.path.join('tools', 'resources'),
+            'resources',
+        ]
+        candidate_bins = []
+        candidate_jars_versioned = []  # (version_tuple, path)
+        candidate_plain = ''
+        version_re = re.compile(r'apktool_(\d+)\.(\d+)\.(\d+)\.jar$', re.IGNORECASE)
+
+        for base in bases:
+            if not os.path.isdir(base):
+                continue
+            try:
+                # binaries
+                for name in ['apktool', 'apktool.exe']:
+                    p = os.path.join(base, name)
+                    if os.path.isfile(p) and os.access(p, os.X_OK) and 'dirty' not in os.path.basename(p).lower():
+                        candidate_bins.append(p)
+                # plain jar
+                plain = os.path.join(base, 'apktool.jar')
+                if os.path.isfile(plain) and 'dirty' not in os.path.basename(plain).lower():
+                    candidate_plain = candidate_plain or plain
+                # versioned jars
+                for jar in glob.glob(os.path.join(base, 'apktool_*.jar')):
+                    name_lower = os.path.basename(jar).lower()
+                    if 'dirty' in name_lower:
+                        continue
+                    m = version_re.search(name_lower)
+                    if m:
+                        ver = tuple(int(x) for x in m.groups())
+                        candidate_jars_versioned.append((ver, jar))
+            except Exception:
+                continue
+
+        if candidate_bins:
+            return candidate_bins[0]
+        if candidate_jars_versioned:
+            candidate_jars_versioned.sort(reverse=True)
+            return candidate_jars_versioned[0][1]
+        return candidate_plain
     except Exception:
-        pass
-    return ''
+        return ''
 def _read_manifest_package(manifest_path: str) -> str:
     try:
         tree = ET.parse(manifest_path)
@@ -976,7 +1216,7 @@ def _detect_split_apk(manifest_path: str):
         return False, f"manifest parse error: {e}"
 
 
-def _write_provider_smali(smali_dir: str, provider_class: str) -> bool:
+def _write_provider_smali(smali_dir: str, provider_class: str, lib_name: str = 'frida-gadget') -> bool:
     try:
         parts = provider_class.split('.')
         class_name = parts[-1]
@@ -1024,7 +1264,7 @@ def _write_provider_smali(smali_dir: str, provider_class: str) -> bool:
     invoke-direct {{v3}}, Ljava/lang/StringBuilder;-><init>()V
     invoke-virtual {{v3, v2}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     move-result-object v3
-    const-string v4, "/libfrida-gadget.config.so"
+    const-string v4, "/lib{lib_name}.config.so"
     invoke-virtual {{v3, v4}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     move-result-object v3
     invoke-virtual {{v3}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
@@ -1051,7 +1291,7 @@ def _write_provider_smali(smali_dir: str, provider_class: str) -> bool:
     move-result-object v6
     invoke-static {{v0, v6}}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    const-string v0, "frida-gadget"
+    const-string v0, "{lib_name}"
     invoke-static {{v0}}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
     const/4 v0, 0x1
     return v0
@@ -1253,7 +1493,7 @@ def _resolve_class_to_smali_path(smali_roots, class_name: str) -> str:
     return None
 
 
-def _inject_oncreate_load_gadget(smali_file: str):
+def _inject_oncreate_load_gadget(smali_file: str, lib_name: str = 'frida-gadget'):
     try:
         with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
@@ -1273,7 +1513,7 @@ def _inject_oncreate_load_gadget(smali_file: str):
                         break
                 break
         load_snippet = [
-            '    const-string v0, "frida-gadget"\n',
+            f'    const-string v0, "{lib_name}"\n',
             '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
         ]
         if start_idx != -1 and end_idx != -1:
@@ -1301,7 +1541,7 @@ def _inject_oncreate_load_gadget(smali_file: str):
                 '\n.method protected onCreate(Landroid/os/Bundle;)V\n'
                 '    .locals 1\n'
                 '    invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V\n'
-                '    const-string v0, "frida-gadget"\n'
+                f'    const-string v0, "{lib_name}"\n'
                 '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
                 '    return-void\n'
                 '.end method\n'
@@ -1314,7 +1554,7 @@ def _inject_oncreate_load_gadget(smali_file: str):
         return False, f'smali injection failed: {e}'
 
 
-def _inject_application_oncreate(smali_file: str):
+def _inject_application_oncreate(smali_file: str, lib_name: str = 'frida-gadget'):
     try:
         with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
@@ -1334,7 +1574,7 @@ def _inject_application_oncreate(smali_file: str):
                         break
                 break
         load_snippet = [
-            '    const-string v0, "frida-gadget"\n',
+            f'    const-string v0, "{lib_name}"\n',
             '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
         ]
         if start_idx != -1 and end_idx != -1:
@@ -1361,7 +1601,7 @@ def _inject_application_oncreate(smali_file: str):
             new_method = (
                 '\n.method public onCreate()V\n'
                 '    .locals 1\n'
-                '    const-string v0, "frida-gadget"\n'
+                f'    const-string v0, "{lib_name}"\n'
                 '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
                 '    invoke-super {p0}, Landroid/app/Application;->onCreate()V\n'
                 '    return-void\n'
@@ -1375,7 +1615,7 @@ def _inject_application_oncreate(smali_file: str):
         return False, f'application smali injection failed: {e}'
 
 
-def _inject_component_factory_instantiate(smali_file: str):
+def _inject_component_factory_instantiate(smali_file: str, lib_name: str = 'frida-gadget'):
     try:
         with open(smali_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
@@ -1396,7 +1636,7 @@ def _inject_component_factory_instantiate(smali_file: str):
                         break
                 break
         load_snippet = [
-            '    const-string v0, "frida-gadget"\n',
+            f'    const-string v0, "{lib_name}"\n',
             '    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V\n'
         ]
         if start_idx != -1 and end_idx != -1:
@@ -1421,7 +1661,7 @@ def _inject_component_factory_instantiate(smali_file: str):
         return False, f'component factory injection failed: {e}'
 
 
-def _fallback_activity_autoload(workdir: str, manifest_path: str):
+def _fallback_activity_autoload(workdir: str, manifest_path: str, lib_name: str = 'frida-gadget'):
     try:
         smali_roots = _list_smali_roots(workdir)
         if not smali_roots:
@@ -1432,7 +1672,7 @@ def _fallback_activity_autoload(workdir: str, manifest_path: str):
         smali_path = _resolve_class_to_smali_path(smali_roots, main_cls)
         if not smali_path:
             return False, f'smali for {main_cls} not found'
-        ok, info = _inject_oncreate_load_gadget(smali_path)
+        ok, info = _inject_oncreate_load_gadget(smali_path, lib_name)
         return ok, f'{main_cls}: {info}'
     except Exception as e:
         return False, f'activity autoload failed: {e}'
@@ -1461,7 +1701,7 @@ def _run_apktool_build(apktool_path: str, workdir: str, out_apk: str):
     def _cmd(use_aapt2: bool):
         apktool_lower = apktool_path.lower()
         base = ['java', '-jar', apktool_path, 'b', workdir, '-o', out_apk, '-f'] if apktool_lower.endswith('.jar') else [apktool_path, 'b', workdir, '-o', out_apk, '-f']
-        return base + (['--use-aapt2'] if use_aapt2 else [])
+        return base
 
     cmd_aapt2 = _cmd(True)
     result = subprocess.run(cmd_aapt2, capture_output=True, text=True, timeout=900)
@@ -1481,11 +1721,11 @@ def _run_apktool_build(apktool_path: str, workdir: str, out_apk: str):
 def _run_apktool_decode(apktool_path: str, apk_path: str, out_dir: str):
     apktool_lower = apktool_path.lower()
     if apktool_lower.endswith('.jar'):
-        cmd = ['java', '-jar', apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r', '--use-aapt2']
+        cmd = ['java', '-jar', apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r']
     elif apktool_lower.endswith(('.exe', '.bat')):
-        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r', '--use-aapt2']
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r']
     else:
-        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r', '--use-aapt2']
+        cmd = [apktool_path, 'd', apk_path, '-o', out_dir, '-f', '-r']
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
@@ -1509,6 +1749,14 @@ def api_gadget_inject():
         script_text = (request.form.get('script_text') or '').strip()
         autoload_raw = (request.form.get('autoload') or '').strip().lower()
         autoload = autoload_raw in ('1', 'true', 'on', 'yes')
+        # Custom library base name
+        lib_name = (request.form.get('lib_name') or 'frida-gadget').strip()
+        try:
+            import re as _re
+            if not lib_name or not _re.fullmatch(r'[A-Za-z0-9_\-]{1,64}', lib_name):
+                lib_name = 'frida-gadget'
+        except Exception:
+            lib_name = 'frida-gadget'
 
         # Save upload
         filename = secure_filename(file.filename)
@@ -1520,10 +1768,10 @@ def api_gadget_inject():
             fsize = -1
         log_to_fsr_logs(f"[GADGET] Saved to {upload_path} (size={fsize} bytes)")
 
-        apktool_path = _find_apktool_from_resources()
-        if apktool_path:
-            log_to_fsr_logs(f"[GADGET] Using bundled apktool: {apktool_path}")
-        else:
+        # Prefer system-installed apktool first
+        apktool_path = shutil.which('apktool')
+
+        if not apktool_path:
             try:
                 from sslpindetect import SSLPinDetector
                 detector_temp = SSLPinDetector()
@@ -1532,7 +1780,9 @@ def api_gadget_inject():
                 apktool_path = None
 
         if not apktool_path or not os.path.exists(apktool_path):
-            apktool_path = shutil.which('apktool')
+            apktool_path = _find_apktool_from_resources()
+            if apktool_path:
+                log_to_fsr_logs(f"[GADGET] Using bundled apktool: {apktool_path}")
         if not apktool_path:
             try:
                 if os.path.exists(upload_path):
@@ -1576,7 +1826,7 @@ def api_gadget_inject():
 
         lib_dir = os.path.join(workdir, 'lib', arch)
         os.makedirs(lib_dir, exist_ok=True)
-        gadget_out = os.path.join(lib_dir, 'libfrida-gadget.so')
+        gadget_out = os.path.join(lib_dir, f'lib{lib_name}.so')
         if version:
             try:
                 cached = _ensure_cached_gadget(arch, version)
@@ -1661,7 +1911,7 @@ def api_gadget_inject():
                 sf.write(wrapped_source if wrapped_source.endswith('\n') else wrapped_source + '\n')
             log_to_fsr_logs(f"[GADGET] Wrote script to {script_abs}")
 
-        config_path = os.path.join(lib_dir, 'libfrida-gadget.config.so')
+        config_path = os.path.join(lib_dir, f'lib{lib_name}.config.so')
         cfg = {}
         if chosen_script_content:
             try:
@@ -1718,7 +1968,7 @@ def api_gadget_inject():
             app_class = 'com.fsr.FSRApp'
             manifest_ok = _modify_manifest_add_application(manifest_path, app_class)
             if manifest_ok:
-                smali_ok = _write_application_smali(smali_dir, app_class)
+                smali_ok = _write_application_smali(smali_dir, app_class, lib_name)
                 if not smali_ok:
                     raise RuntimeError('Failed to write Application smali')
                 log_to_fsr_logs("[GADGET] Autoload via new Application (no existing android:name)")
@@ -1731,7 +1981,7 @@ def api_gadget_inject():
                         log_to_fsr_logs(f"[GADGET] Base Application '{base_app}' is final; skipping wrapper and using alternatives")
                         base_cf = _get_manifest_component_factory(manifest_path)
                         cf_wrapper = 'com.fsr.AppCF'
-                        cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory')
+                        cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory', lib_name)
                         if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
                             log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
                         else:
@@ -1739,13 +1989,13 @@ def api_gadget_inject():
                             package_name = _read_manifest_package(manifest_path) or 'com.fsr'
                             provider_class = 'com.fsr.FSRInit'
                             authorities = f"{package_name}.fsrinit"
-                            prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                            prov_smali_ok = _write_provider_smali(smali_dir, provider_class, lib_name)
                             if not prov_smali_ok:
                                 raise RuntimeError('Failed to write ContentProvider smali')
                             prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
                             if not prov_manifest_ok:
                                 log_to_fsr_logs(f"[GADGET] Provider injection failed: {prov_info}. Trying activity fallback autoload")
-                                act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path)
+                                act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path, lib_name)
                                 if not act_ok:
                                     raise RuntimeError(f'Failed to inject ContentProvider into manifest: {prov_info}; Activity fallback failed: {act_info}')
                                 else:
@@ -1754,14 +2004,14 @@ def api_gadget_inject():
                                 log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
                     else:
                         wrapper_class = 'com.fsr.AppWrapper'
-                        w_ok = _write_app_wrapper_smali(smali_dir, wrapper_class, base_app)
+                        w_ok = _write_app_wrapper_smali(smali_dir, wrapper_class, base_app, lib_name)
                         if w_ok and _modify_manifest_set_application(manifest_path, wrapper_class):
                             log_to_fsr_logs(f"[GADGET] Autoload via Application wrapper: {wrapper_class} extends {base_app}")
                         else:
                             log_to_fsr_logs("[GADGET] App wrapper failed; trying ComponentFactory wrapper")
                             base_cf = _get_manifest_component_factory(manifest_path)
                             cf_wrapper = 'com.fsr.AppCF'
-                            cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory')
+                            cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory', lib_name)
                             if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
                                 log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
                             else:
@@ -1769,13 +2019,13 @@ def api_gadget_inject():
                                 package_name = _read_manifest_package(manifest_path) or 'com.fsr'
                                 provider_class = 'com.fsr.FSRInit'
                                 authorities = f"{package_name}.fsrinit"
-                                prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                                prov_smali_ok = _write_provider_smali(smali_dir, provider_class, lib_name)
                                 if not prov_smali_ok:
                                     raise RuntimeError('Failed to write ContentProvider smali')
                                 prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
                                 if not prov_manifest_ok:
                                     log_to_fsr_logs(f"[GADGET] Provider injection failed: {prov_info}. Trying activity fallback autoload")
-                                    act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path)
+                                    act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path, lib_name)
                                     if not act_ok:
                                         raise RuntimeError(f'Failed to inject ContentProvider into manifest: {prov_info}; Activity fallback failed: {act_info}')
                                     else:
@@ -1786,20 +2036,20 @@ def api_gadget_inject():
                     log_to_fsr_logs("[GADGET] No Application name; trying ComponentFactory wrapper first")
                     base_cf = _get_manifest_component_factory(manifest_path)
                     cf_wrapper = 'com.fsr.AppCF'
-                    cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory')
+                    cf_ok = _write_component_factory_wrapper_smali(smali_dir, cf_wrapper, base_cf or 'android.app.AppComponentFactory', lib_name)
                     if cf_ok and _modify_manifest_set_component_factory(manifest_path, cf_wrapper):
                         log_to_fsr_logs(f"[GADGET] Autoload via ComponentFactory wrapper: {cf_wrapper} extends {base_cf or 'android.app.AppComponentFactory'}")
                     else:
                         package_name = _read_manifest_package(manifest_path) or 'com.fsr'
                         provider_class = 'com.fsr.FSRInit'
                         authorities = f"{package_name}.fsrinit"
-                        prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                        prov_smali_ok = _write_provider_smali(smali_dir, provider_class, lib_name)
                         if not prov_smali_ok:
                             raise RuntimeError('Failed to write ContentProvider smali')
                         prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
                         if not prov_manifest_ok:
                             log_to_fsr_logs(f"[GADGET] Provider injection failed: {prov_info}. Trying activity fallback autoload")
-                            act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path)
+                            act_ok, act_info = _fallback_activity_autoload(workdir, manifest_path, lib_name)
                             if not act_ok:
                                 raise RuntimeError(f'Failed to inject ContentProvider into manifest: {prov_info}; Activity fallback failed: {act_info}')
                             else:
@@ -1807,7 +2057,7 @@ def api_gadget_inject():
                         else:
                             log_to_fsr_logs(f"[GADGET] Autoload via provider: {prov_info}")
             try:
-                ok, info = _fallback_activity_autoload(workdir, manifest_path)
+                ok, info = _fallback_activity_autoload(workdir, manifest_path, lib_name)
                 log_to_fsr_logs(f"[GADGET] Additional activity autoload attempt: {info}")
             except Exception as e:
                 log_to_fsr_logs(f"[GADGET] Additional activity autoload skipped: {e}")
@@ -1815,7 +2065,7 @@ def api_gadget_inject():
                 package_name = _read_manifest_package(manifest_path) or 'com.fsr'
                 provider_class = 'com.fsr.FSRInit'
                 authorities = f"{package_name}.fsrinit"
-                prov_smali_ok = _write_provider_smali(smali_dir, provider_class)
+                prov_smali_ok = _write_provider_smali(smali_dir, provider_class, lib_name)
                 if prov_smali_ok:
                     prov_manifest_ok, prov_info = _inject_provider_manifest(manifest_path, provider_class, authorities)
                     log_to_fsr_logs(f"[GADGET] Additional provider autoload attempt: {prov_info}")

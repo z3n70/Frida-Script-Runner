@@ -56,6 +56,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/apk-realign-resign') %}active{% endif %}" href="{{ url_for('apk_realign_resign_page') }}">
+                            <i class="bi bi-file-earmark-check"></i> APK Re-Sign
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.path.startswith('/sslpindec') %}active{% endif %}" href="{{ url_for('sslpindetect_page') }}">
                             <i class="bi bi-shield-lock"></i> SSL Detector
                         </a>

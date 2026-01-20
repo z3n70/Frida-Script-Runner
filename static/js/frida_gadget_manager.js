@@ -17,25 +17,47 @@ async function gmFetchLocal() {
       tr.innerHTML = `
         <td>${it.version}</td>
         <td>${it.arch}</td>
+        <td>${it.filename ? it.filename.replace(/^lib|\.so$/g, '') : (it.path.split('\\\\').pop().split('/').pop().replace(/^lib|\.so$/g, ''))}</td>
         <td>${size}</td>
         <td><code>${it.path}</code></td>
-        <td>
-          <button class="btn btn-sm btn-outline-danger" data-ver="${it.version}" data-arch="${it.arch}">Delete</button>
+        <td class="d-flex gap-1">
+          <button class="btn btn-sm btn-outline-secondary" data-act="copy" data-ver="${it.version}" data-arch="${it.arch}" data-fn="${it.filename || ''}">Copy As</button>
+          <button class="btn btn-sm btn-outline-warning" data-act="rename" data-ver="${it.version}" data-arch="${it.arch}" data-fn="${it.filename || ''}">Rename</button>
+          <button class="btn btn-sm btn-outline-danger" data-act="delete" data-ver="${it.version}" data-arch="${it.arch}">Delete</button>
         </td>
       `;
       tbody.appendChild(tr);
     }
-    tbody.querySelectorAll('button[data-ver]').forEach(btn => {
+    tbody.querySelectorAll('button[data-act]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
-        const version = e.target.getAttribute('data-ver');
-        const arch = e.target.getAttribute('data-arch');
-        if (!confirm(`Delete ${version} ${arch}?`)) return;
-        const res = await fetch('/api/gadget/delete', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ version, arch })
-        });
-        const j = await res.json();
-        if (j.success) gmFetchLocal(); else alert(j.error || 'Delete failed');
+        const action = e.currentTarget.getAttribute('data-act');
+        const version = e.currentTarget.getAttribute('data-ver');
+        const arch = e.currentTarget.getAttribute('data-arch');
+        const old_filename = e.currentTarget.getAttribute('data-fn') || '';
+        if (action === 'delete') {
+          if (!confirm(`Delete all cache for ${version} ${arch}?`)) return;
+          const res = await fetch('/api/gadget/delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version, arch })
+          });
+          const j = await res.json();
+          if (j.success) gmFetchLocal(); else alert(j.error || 'Delete failed');
+        } else if (action === 'copy' || action === 'rename') {
+          const new_name = prompt('Enter new library name (allowed: letters, numbers, _ or -):');
+          if (!new_name) return;
+          const mode = action === 'rename' ? 'move' : 'copy';
+          const res = await fetch('/api/gadget/rename', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version, arch, old_filename, new_name, mode })
+          });
+          const j = await res.json();
+          if (j.success) {
+            alert(`${j.action || 'updated'} -> ${j.filename}`);
+            gmFetchLocal();
+          } else {
+            alert(j.error || 'Operation failed');
+          }
+        }
       });
     });
   } catch {}

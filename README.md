@@ -31,6 +31,7 @@ A comprehensive toolkit for analyzing, manipulating, and interacting with mobile
 - **Searchable Package List:** Quickly find target applications via live search functionality in the package selector.
 - **Custom Filename Option:** Define a custom name for the dumped APK/IPA instead of using the default package name.
 - **Install APK to Device:** Upload and install an APK file directly onto an Android device with a single click.
+- **APK Re-Align & Re-Sign:** Upload any APK to align (zipalign) and sign it using a debug keystore or your custom keystore, with download and one-click install back to device.
 
 ### User Experience
 - **Modern UI Design:** Clean and visually appealing user interface for better user experience.
