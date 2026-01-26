@@ -53,6 +53,16 @@ function loadDevices() {
                   ${isAndroid ? `<span class="badge bg-warning text-dark">Arch: ${arch}</span>` : '<span class="badge bg-secondary">iOS</span>'}
                 </div>
                 ${isAndroid && serial ? `<div class="mt-1"><small class="text-muted">Serial: ${serial}</small></div>` : ''}
+                ${isAndroid ? `
+                  <div class="mt-2 small" id="status-${idDisp}">
+                    Server: <span id="ver-${idDisp}">-</span> | PID: <span id="pid-${idDisp}">-</span> | Port: <span id="port-${idDisp}">-</span>
+                    | <span id="run-${idDisp}" class="badge bg-secondary">Unknown</span>
+                  </div>
+                  <div class="mt-2 form-check form-switch">
+                    <input class="form-check-input fsm-toggle" type="checkbox" id="enable-${idDisp}" data-device-id="${idDisp}">
+                    <label class="form-check-label" for="enable-${idDisp}">Enabled</label>
+                  </div>
+                ` : ''}
               </div>
             </div>
           </div>
@@ -76,6 +86,7 @@ function loadDevices() {
       const arch = selected && selected.dataset.arch ? selected.dataset.arch : '';
       updateReleaseLabelsForArch(arch);
       fsmLog('Devices loaded');
+      loadFridaStatus();
     })
     .catch(err => {
       devicesContainer.innerHTML = `<div class="text-danger">Error: ${err.message}</div>`;
@@ -124,6 +135,8 @@ function startWithVersion() {
 
   const version = releaseSelect.value;
   const deviceId = deviceSelect.value;
+  const portInput = document.getElementById('serverPortInput');
+  const port = parseInt((portInput && portInput.value) ? portInput.value : '27042', 10) || 27042;
   if (!version || !deviceId) {
     alert('Please select a device and a Frida version.');
     return;
@@ -136,12 +149,13 @@ function startWithVersion() {
   fetch('/start-frida-server-version', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ device_id: deviceId, version })
+    body: JSON.stringify({ device_id: deviceId, version, port })
   })
   .then(r => r.json())
   .then(data => {
     if (!data.success) throw new Error(data.error || 'Failed to start frida-server');
-    fsmLog(`frida-server ${version} started. Running=${data.running ? 'yes' : 'no'}`);
+    fsmLog(`frida-server ${data.version || version} started on port ${data.port || port}. PID=${data.pid || '-'} Running=${data.running ? 'yes' : 'no'}`);
+    loadFridaStatus();
   })
   .catch(err => {
     fsmLog(`Error starting frida-server: ${err.message}`, 'error');
@@ -231,5 +245,77 @@ document.addEventListener('DOMContentLoaded', function() {
   loadDevices();
   loadReleases();
   loadLocalFrida();
+});
+
+function loadFridaStatus() {
+  fetch('/frida-server-status')
+    .then(r => r.json())
+    .then(status => {
+      if (!status || status.error) return;
+      Object.keys(status).forEach(devId => {
+        const s = status[devId];
+        const verEl = document.getElementById(`ver-${devId}`);
+        const pidEl = document.getElementById(`pid-${devId}`);
+        const portEl = document.getElementById(`port-${devId}`);
+        const runEl = document.getElementById(`run-${devId}`);
+        const toggle = document.getElementById(`enable-${devId}`);
+        if (verEl) verEl.textContent = s && s.version ? s.version : '-';
+        if (pidEl) pidEl.textContent = s && s.pid ? s.pid : '-';
+        if (portEl) portEl.textContent = s && s.port ? s.port : '-';
+        if (runEl) {
+          runEl.className = s && s.running ? 'badge bg-success' : 'badge bg-danger';
+          runEl.textContent = s && s.running ? 'Running' : 'Stopped';
+        }
+        if (toggle) {
+          toggle.checked = !!(s && s.running);
+        }
+      });
+    })
+    .catch(() => {});
+}
+
+// Toggle enable/disable per device
+document.addEventListener('change', function(e) {
+  if (e.target.classList.contains('fsm-toggle')) {
+    const checkbox = e.target;
+    const deviceId = checkbox.getAttribute('data-device-id');
+    const portInput = document.getElementById('serverPortInput');
+    const port = parseInt((portInput && portInput.value) ? portInput.value : '27042', 10) || 27042;
+    if (checkbox.checked) {
+      fsmLog(`Enabling frida-server on ${deviceId} (port ${port})...`);
+      fetch('/start-frida-server', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId, force_download: false, port })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || d.error) throw new Error(d.error || 'Failed to start');
+        fsmLog(`Started on ${deviceId}. PID=${d.pid || '-'} Port=${d.port || port}`);
+        loadFridaStatus();
+      })
+      .catch(err => {
+        checkbox.checked = false;
+        fsmLog(`Error enabling on ${deviceId}: ${err.message}`, 'error');
+      });
+    } else {
+      fsmLog(`Disabling frida-server on ${deviceId}...`);
+      fetch('/stop-frida-server', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || d.error) throw new Error(d.error || 'Failed to stop');
+        fsmLog(`Stopped on ${deviceId}.`);
+        loadFridaStatus();
+      })
+      .catch(err => {
+        checkbox.checked = true;
+        fsmLog(`Error disabling on ${deviceId}: ${err.message}`, 'error');
+      });
+    }
+  }
 });
 

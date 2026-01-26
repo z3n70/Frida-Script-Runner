@@ -142,6 +142,110 @@ def get_device_platform(device_info):
     else:
         return "unknown"
 
+# -------------------- Frida Server Details Helpers --------------------
+def get_frida_server_pid(device_id: str):
+    try:
+        # Try pidof first
+        pid_output = run_adb_command(["adb", "-s", device_id, "shell", "pidof", "frida-server"], timeout=5, retries=1, suppress_log=True)
+        if isinstance(pid_output, str) and pid_output and "Error:" not in pid_output:
+            pid = pid_output.strip().split()[-1]
+            if pid.isdigit():
+                return pid
+        # Fallback to ps parsing
+        ps_result = run_adb_command(["adb", "-s", device_id, "shell", "ps", "-A"], timeout=8, retries=1, suppress_log=True)
+        if isinstance(ps_result, str) and ps_result:
+            for line in ps_result.split("\n"):
+                if "frida-server" in line and line.strip().endswith("frida-server"):
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        return parts[1]
+    except Exception:
+        pass
+    return None
+
+def _read_remote_cmdline(device_id: str, pid: str):
+    # Read /proc/<pid>/cmdline; try with su -c first then without
+    candidates = [
+        ["adb", "-s", device_id, "shell", "su", "-c", f"cat /proc/{pid}/cmdline"],
+        ["adb", "-s", device_id, "shell", "cat", f"/proc/{pid}/cmdline"],
+    ]
+    for cmd in candidates:
+        try:
+            out = run_adb_command(cmd, timeout=5, retries=0, suppress_log=True)
+            if isinstance(out, str) and out and "Error:" not in out:
+                return out
+        except Exception:
+            continue
+    return None
+
+def get_frida_server_port(device_id: str, pid: str = None):
+    try:
+        if not pid:
+            pid = get_frida_server_pid(device_id)
+        if not pid:
+            return None
+        cmdline = _read_remote_cmdline(device_id, pid)
+        if not cmdline:
+            return None
+        # cmdline is null-separated; normalize spaces
+        try:
+            normalized = cmdline.replace("\x00", " ").strip()
+        except Exception:
+            normalized = cmdline.strip()
+        # Look for '-l' or '--listen' argument
+        tokens = [t for t in normalized.split() if t]
+        for i, tok in enumerate(tokens):
+            if tok in ("-l", "--listen") and i + 1 < len(tokens):
+                listen = tokens[i + 1]
+                if ":" in listen:
+                    return listen.split(":")[-1]
+                return listen
+            if tok.startswith("-l") and tok != "-l":
+                # e.g., -l0.0.0.0:12345
+                val = tok[2:]
+                if ":" in val:
+                    return val.split(":")[-1]
+                return val
+        # Fallback to default port if running
+        return "27042"
+    except Exception:
+        return None
+
+def get_frida_server_version(device_id: str):
+    try:
+        name = frida_server_installed(device_id)
+        if not name:
+            return None
+        remote = f"/data/local/tmp/{name}"
+        candidates = [
+            ["adb", "-s", device_id, "shell", "su", "-c", f"{remote} --version"],
+            ["adb", "-s", device_id, "shell", f"{remote} --version"],
+            ["adb", "-s", device_id, "shell", "su", "-c", f"{remote} -V"],
+            ["adb", "-s", device_id, "shell", f"{remote} -V"],
+            ["adb", "-s", device_id, "shell", "su", "-c", f"{remote} -h"],
+            ["adb", "-s", device_id, "shell", f"{remote} -h"],
+        ]
+        for cmd in candidates:
+            try:
+                out = run_adb_command(cmd, timeout=6, retries=0, suppress_log=True) or ""
+                if isinstance(out, str) and out and "not found" not in out.lower() and "Error:" not in out:
+                    # Extract version-like token
+                    m = re.search(r"(\d+\.\d+\.\d+)", out)
+                    if m:
+                        return m.group(1)
+                    # Try a line starting with 'Frida'
+                    for line in out.splitlines():
+                        if "frida" in line.lower() and any(ch.isdigit() for ch in line):
+                            m2 = re.search(r"(\d+\.\d+\.\d+)", line)
+                            if m2:
+                                return m2.group(1)
+                    return out.strip().splitlines()[0] if out.strip() else None
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
 # -------------------- Frida Server Manager: Views & APIs --------------------
 @app.route('/frida-server-manager')
 def frida_server_manager_page():
@@ -423,6 +527,7 @@ def start_frida_server_version():
         data = request.get_json(force=True)
         device_id = data.get('device_id')
         version = data.get('version')
+        port = str(data.get('port', 27042))
         if not device_id or not version:
             return jsonify({'success': False, 'error': 'device_id and version are required'}), 400
 
@@ -470,16 +575,19 @@ def start_frida_server_version():
             pass
 
         try:
-            subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+            subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", f"/data/local/tmp/frida-server -l 0.0.0.0:{port} &"], timeout=10, capture_output=True)
         except subprocess.TimeoutExpired:
             try:
-                subprocess.run(["adb", "-s", device_id, "shell", "su", "root", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+                subprocess.run(["adb", "-s", device_id, "shell", "su", "root", f"/data/local/tmp/frida-server -l 0.0.0.0:{port} &"], timeout=10, capture_output=True)
             except subprocess.TimeoutExpired:
-                subprocess.run(["adb", "-s", device_id, "shell", "/data/local/tmp/frida-server &"], timeout=10, capture_output=True)
+                subprocess.run(["adb", "-s", device_id, "shell", f"/data/local/tmp/frida-server -l 0.0.0.0:{port} &"], timeout=10, capture_output=True)
 
         time.sleep(3)
         running = is_frida_server_running(device_id)
-        return jsonify({'success': True, 'running': running, 'device_id': device_id, 'version': version})
+        pid = get_frida_server_pid(device_id) if running else None
+        listen_port = get_frida_server_port(device_id, pid) if pid else None
+        ver = get_frida_server_version(device_id)
+        return jsonify({'success': True, 'running': running, 'device_id': device_id, 'version': ver or version, 'pid': pid, 'port': listen_port or str(port)})
     except Exception as e:
         log_to_fsr_logs(f"[FSM] Error starting frida-server with version: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3809,11 +3917,17 @@ def frida_server_status():
                 log_to_fsr_logs(f"[DEBUG] Checking status for Android device: {device_id}")
                 installed_status = frida_server_installed(device_id)
                 running_status = is_frida_server_running(device_id)
-                
+                pid = get_frida_server_pid(device_id) if running_status else None
+                port = get_frida_server_port(device_id, pid) if running_status else None
+                version = get_frida_server_version(device_id) if installed_status else None
+
                 status_info[device_id] = {
-                    "installed": bool(installed_status),  
+                    "installed": bool(installed_status),
                     "frida_server_name": installed_status if installed_status else None,
                     "running": running_status,
+                    "pid": pid,
+                    "port": port,
+                    "version": version,
                     "device_info": device
                 }
                 
@@ -3972,6 +4086,7 @@ def start_frida_server():
         data = request.get_json()
         device_id = data.get('device_id')
         force_download = data.get('force_download', False)
+        port = str(data.get('port', 27042))
         
         log_to_fsr_logs(f"[DEBUG] Starting Frida server for device: {device_id}")
         log_to_fsr_logs(f"[DEBUG] Force download: {force_download}")
@@ -4097,8 +4212,8 @@ def start_frida_server():
                 
                 try:
                     log_to_fsr_logs(f"[DEBUG] Method 1: Starting with su command...")
-                    subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", f"/data/local/tmp/{frida_server_name} &"], 
-                                 timeout=10, capture_output=True)
+                    subprocess.run(["adb", "-s", device_id, "shell", "su", "-c", f"/data/local/tmp/{frida_server_name} -l 0.0.0.0:{port} &"], 
+                                  timeout=10, capture_output=True)
                     log_to_fsr_logs(f"[DEBUG] su command executed")
                     
                     import time
@@ -4111,8 +4226,8 @@ def start_frida_server():
                         
                         try:
                             log_to_fsr_logs(f"[DEBUG] Method 2: Starting with direct root shell...")
-                            subprocess.run(["adb", "-s", device_id, "shell", "su", "root", f"/data/local/tmp/{frida_server_name} &"], 
-                                         timeout=10, capture_output=True)
+                            subprocess.run(["adb", "-s", device_id, "shell", "su", "root", f"/data/local/tmp/{frida_server_name} -l 0.0.0.0:{port} &"], 
+                                             timeout=10, capture_output=True)
                             log_to_fsr_logs(f"[DEBUG] su root command executed")
                             time.sleep(3)
                             
@@ -4121,8 +4236,8 @@ def start_frida_server():
                             else:
                                 log_to_fsr_logs(f"[DEBUG] su root method failed, trying basic method...")
                                 
-                                subprocess.run(["adb", "-s", device_id, "shell", f"/data/local/tmp/{frida_server_name} &"], 
-                                             timeout=10, capture_output=True)
+                                subprocess.run(["adb", "-s", device_id, "shell", f"/data/local/tmp/{frida_server_name} -l 0.0.0.0:{port} &"], 
+                                              timeout=10, capture_output=True)
                                 log_to_fsr_logs(f"[DEBUG] Basic method executed")
                                 time.sleep(3)
                                 
@@ -4143,12 +4258,20 @@ def start_frida_server():
             else:
                 log_to_fsr_logs(f"[DEBUG] Frida server already running")
             
+            # Collect details
+            pid = get_frida_server_pid(device_id) if is_frida_server_running(device_id) else None
+            listen_port = get_frida_server_port(device_id, pid) if pid else None
+            version = get_frida_server_version(device_id) if frida_server_name else None
+
             return jsonify({
                 "success": True,
                 "message": f"Frida server started successfully on {target_device.get('model', 'Android device')}",
                 "device_id": device_id,
                 "frida_server_name": frida_server_name,
-                "platform": "android"
+                "platform": "android",
+                "pid": pid,
+                "port": listen_port or str(port),
+                "version": version
             })
         
         else:

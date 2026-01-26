@@ -11,6 +11,12 @@ RUN apt-get update && apt-get install -y \
     default-jdk-headless \
     ca-certificates \
     curl \
+    # iOS device tooling (ideviceinfo, idevice_id, usbmuxd)
+    libimobiledevice-utils \
+    usbmuxd \
+    # helpful libs commonly required by the above
+    libusb-1.0-0 \
+    libplist-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------------------------------------------
